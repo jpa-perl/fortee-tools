@@ -91,6 +91,8 @@ iOS シミュレータでは、起動のたびに許可を求められ、Permiss
 
 Android エミュレータでは、初回に、Chrome がこのサイトに許可するかの確認と、OS が Chrome アプリにカメラを許可するかの確認が続けて出た。サイトに「サイトの閲覧中は許可」を選ぶと、起動し直しても、1 回の起動の中で止めて再開しても、確認は出なかった（再開したときの `getUserMedia` は 102ms で返った）。「許可しない」を選ぶと、同じ起動の中で再び求めても確認は出ず、`getUserMedia` は 9ms で `NotAllowedError` になり、Permissions API は `denied` を返した。許可し直すには、Chrome のサイト情報で権限をリセットする必要がある。
 
+WebKit の bug 報告には、実機の申告と食い違う利用者の報告が 2 つある。iOS 26.6.2 の実機のホーム画面アプリで、起動のたびに許可を求められたという報告（bug 327237）と、iOS 16.3.1 のホーム画面アプリで、1 分以上あけて読み取ると再び求められたという報告（bug 215884）である。後者では WebKit の担当者が、WKWebView では取り込みをしない状態が 1 分続くと次は再び求めると説明している。実機では、止めてから再開するまでの間隔を変えた確認をしておらず、どちらが正しいかは確かめていない（画面設計書 6.1）。
+
 ここに挙げた時間は、`getUserMedia` を呼んでから返るまでの時間である。映像が画面に出るまでの時間は測っておらず、どちらも仮想のカメラなので、実機のカメラを起動する時間を表していない。
 
 カメラを再開するたびに許可を求められる場合の予備案（S03 と S04 の間でカメラを止めない。画面設計書 6 章）は、1 回の起動の中で再開したときにも許可を求められる場合に限って使う。そうなった環境はなく、iOS 26.3 のシミュレータも、起動のたびには求めたが、起動の中の再開では求めなかった。iOS の実機で、起動の中の再開を個別に確かめていないので、12 章に残している。
@@ -234,7 +236,7 @@ self.addEventListener('fetch', (event) => {
 
 ## 12. 残る確認
 
-- 実機（iOS 27）: 機内モードでの起動、1 回の起動の中でカメラを止めて再開したときに許可を求められるかと、再開してから映像が画面に出るまでの時間、カメラを拒否した後、バックグラウンドから戻った後の音、数日後のデータの保持
+- 実機（iOS 27）: 機内モードでの起動、1 回の起動の中でカメラを止めて再開したときに許可を求められるか（止めてから 1 分以上おいた場合を含む。4 章）と、再開してから映像が画面に出るまでの時間、カメラを拒否した後、バックグラウンドから戻った後の音、数日後のデータの保持
 - iOS 26 の実機: すべての項目。カメラの許可は、シミュレータでは起動のたびに求められたので、特に確かめる
 - Android の実機: すべての項目
 - Discord ログインの残る条件（3.3）
@@ -247,4 +249,5 @@ self.addEventListener('fetch', (event) => {
 - [Netguru: iOS のホーム画面 Web アプリと Safari の間で状態を共有する方法](https://www.netguru.com/blog/how-to-share-session-cookie-or-state-between-pwa-in-standalone-mode-and-safari-on-ios)
 - [RFC 6749 §10.12 Cross-Site Request Forgery](https://www.rfc-editor.org/rfc/rfc6749#section-10.12)、[RFC 9700 Best Current Practice for OAuth 2.0 Security](https://www.rfc-editor.org/rfc/rfc9700)、[RFC 10027 Best Current Practice for Security of Cross-Device Flows（BCP 247）](https://www.rfc-editor.org/info/rfc10027)
 - [WebKit Features in Safari 17.2](https://webkit.org/blog/14787/webkit-features-in-safari-17-2/)（ホーム画面に追加するときの Cookie の複写）
+- WebKit の bug: [215884](https://bugs.webkit.org/show_bug.cgi?id=215884)、[327237](https://bugs.webkit.org/show_bug.cgi?id=327237)（ホーム画面アプリでのカメラの許可）
 - [use-haptic](https://github.com/posaune0423/use-haptic)（iOS の switch の触覚を使う方法）と[その紹介記事](https://zenn.dev/posaune0423/articles/4f963b89ca2fdf)（コメント欄に iOS 26.5 以降の報告）
