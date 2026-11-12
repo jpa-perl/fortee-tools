@@ -55,7 +55,8 @@ export async function preview(target: Target, config: ConfigBody, options: Previ
   const index = buildSnapshotIndex(snapshots, config.events.map((candidate) => candidate.id));
   const allTickets = [...index.byToken.values()];
 
-  // チケット番号は、イベントの中でしか一意でない（constraints.md 7 章）ので、イベントを添えて引く
+  // チケット番号は、イベントを添えて引く。イベントの中でも、fortee の採番で重複することがある（Design Doc 8.3）ので、
+  // 複数あれば、どれを描画するかを選ばずに止める
   const find = (eventId: string, ticketNo: string): Ticket[] =>
     allTickets.filter((ticket) => ticket.eventId === eventId && ticket.ticketNo === ticketNo);
 

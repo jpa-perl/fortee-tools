@@ -39,7 +39,15 @@ export type ImportInput = {
   answerColumns: readonly string[];
   /** 取り込み日時。スナップショットの版になる */
   now: number;
+  /**
+   * profile_url_token の補正（チケットトークン → profile_url_token）。プロフィール QR の画像を複数の行が共有するときに、
+   * その行の profile_url_token を、画像の代わりにここから取る。省略は、補正なし
+   */
+  profileUrlTokens?: ReadonlyMap<string, string>;
 };
+
+/** チケットトークンと profile_url_token の形（英数字 32 文字） */
+export const TOKEN_PATTERN = /^[0-9A-Za-z]{32}$/;
 
 export type TicketTypeSummary = {
   ticketType: string;
@@ -194,13 +202,30 @@ export function importForteeZip(input: ImportInput): ImportResult {
   const types = new Map<string, { count: number; prefixes: Set<string> }>();
   let unissued = 0;
 
+  const isUnissued = (row: Row) => at(row, COLUMN.userName) === "" && at(row, COLUMN.issued) === "";
+
+  // プロフィール QR の画像を共有する行。fortee は、チケット番号を複数の参加者に重ねて採番することがあり、
+  // 画像の名前は種別名とチケット番号から決まるので、その参加者たちは 1 枚の画像を指す（data-sources.md）。
+  // 画像の値はそのうちの高々 1 人のものなので、どの行にも使わず、補正から取る
+  const qrUsers = new Map<string, number[]>();
+  for (const row of rows) {
+    const qrName = at(row, COLUMN.qrProfile);
+    if (isUnissued(row) || qrName === "") continue;
+    const list = qrUsers.get(qrName);
+    if (list === undefined) qrUsers.set(qrName, [row.line]);
+    else list.push(row.line);
+  }
+  const corrections = input.profileUrlTokens ?? new Map<string, string>();
+  const usedCorrections = new Set<string>();
+  const uncorrected: number[] = [];
+
   for (const row of rows) {
     const fail = (column: string, message: string) => errors.push(`${row.line} 行目の「${column}」: ${message}`);
     const userName = at(row, COLUMN.userName);
     const issued = at(row, COLUMN.issued);
 
     // User name と Issued が両方空の行は、未発券として除く。片方だけが空の行は、何を表すかを確かめていないので止める
-    if (userName === "" && issued === "") {
+    if (isUnissued(row)) {
       unissued++;
       continue;
     }
@@ -228,6 +253,13 @@ export function importForteeZip(input: ImportInput): ImportResult {
     const png = qrName === "" ? undefined : entries[`${QR_PROFILE_DIR}${qrName}`];
     if (qrName === "") {
       fail(COLUMN.qrProfile, "空です");
+    } else if ((qrUsers.get(qrName)?.length ?? 0) > 1) {
+      // 画像を共有する行。チケットトークンが読めない行は、Ticket url の誤りとして上で挙げている
+      if (ticketToken !== undefined) {
+        profileUrlToken = corrections.get(ticketToken);
+        if (profileUrlToken === undefined) uncorrected.push(row.line);
+        else usedCorrections.add(ticketToken);
+      }
     } else if (png === undefined) {
       fail(COLUMN.qrProfile, `ZIP に、この値の名前の画像（${QR_PROFILE_DIR} 以下）がありません`);
     } else {
@@ -265,18 +297,38 @@ export function importForteeZip(input: ImportInput): ImportResult {
     });
   }
 
-  // イベントの中での重複。fortee ではどれもチケットごとに別の値なので、どちらの行を採るかを決める根拠がない
+  const linesText = (lines: readonly number[]) => lines.map((line) => `${line} 行目`).join("、");
+
+  // 画像を共有する行に、補正がない。画像の値を黙って使うと、一括チェックイン CSV の 1 行が別の参加者を指す
+  if (uncorrected.length > 0) {
+    errors.push(
+      `「${COLUMN.qrProfile}」の画像を、ほかの行と共有しています。profile_url_token を画像から決められないので、補正ファイルに、その行のチケットトークンと profile_url_token（fortee の参加者詳細画面の QR）を書いてください: ${linesText(uncorrected)}`,
+    );
+  }
+  // 使わなかった補正は、止める。画像を共有しなくなった行の古い補正や、チケットトークンの書き間違いを、黙って捨てない
+  const unusedCorrections = [...corrections.keys()].filter((ticketToken) => !usedCorrections.has(ticketToken)).length;
+  if (unusedCorrections > 0) {
+    errors.push(`補正ファイルに、画像を共有する行のどれにも当たらないチケットトークンが ${unusedCorrections} 件あります`);
+  }
+
+  // イベントの中での重複。チケットトークンと profile_url_token は、fortee ではチケットごとに別の値なので、
+  // どちらの行を採るかを決める根拠がない
   for (const [label, entriesOf] of [
     [`「${COLUMN.ticketUrl}」のチケットトークンが`, seen.ticketToken],
-    [`「${COLUMN.ticketNo}」が`, seen.ticketNo],
-    [`「${COLUMN.qrProfile}」の画像の profile_url_token が`, seen.profileUrlToken],
+    [`profile_url_token（「${COLUMN.qrProfile}」の画像か、補正の値）が`, seen.profileUrlToken],
   ] as const) {
     for (const lines of duplicateLines(entriesOf)) {
-      errors.push(`${label}、行のあいだで重複しています: ${lines.map((line) => `${line} 行目`).join("、")}`);
+      errors.push(`${label}、行のあいだで重複しています: ${linesText(lines)}`);
     }
   }
 
   if (errors.length > 0) return { ok: false, errors };
+
+  // Ticket no の重複は、警告にとどめる。fortee の採番が、同じ番号を複数の参加者に付けることがある（本番で確認）。
+  // 参加者はチケットトークンで特定し、チケット番号は表示、検索、並び順にしか使わない
+  for (const lines of duplicateLines(seen.ticketNo)) {
+    warnings.push(`「${COLUMN.ticketNo}」が、行のあいだで重複しています（fortee の採番によるものか確かめてください）: ${linesText(lines)}`);
+  }
 
   if (unissued > 0) warnings.push(`未発券の行（「${COLUMN.userName}」と「${COLUMN.issued}」が空）を ${unissued} 行、取り込まずに除きました`);
 

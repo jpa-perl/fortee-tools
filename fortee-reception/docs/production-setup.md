@@ -264,6 +264,14 @@ npm run cli -- import --env <環境名> --event <イベントの key> --zip <ZIP
 
 取り込みが出すチケット種別とチケット番号の接頭辞が、指定したイベントのものであることを確かめる（PRD 9 章の 1）。ZIP のスラッグが `conference.slug` と違うと、取り込みは止まる（Design Doc 8.3）。
 
+fortee がチケット番号を重ねて採番した参加者がいると、取り込みは、該当する CSV の行と補正ファイルのパスを出して止まる（Design Doc 8.3）。その行の `Ticket url` の末尾 32 文字（チケットトークン）を鍵に、fortee の参加者詳細画面の「QR」カードのプロフィールのリンク（`/attendee/{profile_url_token}/go-profile`）の 32 文字を値にして、補正ファイルに書く。重複した全員の分を書いてから、取り込み直す。
+
+```json
+{ "<チケットトークン>": "<profile_url_token>", "<チケットトークン>": "<profile_url_token>" }
+```
+
+補正ファイルは `.work/<環境名>/profile-url-tokens/<イベントの ID>.json` で、以後の取り込みでも読まれる。コミットしない。
+
 参考情報テンプレートを使うときは、公開の前に、実在の参加者で描画を確かめる（Design Doc 8.7）。
 
 ```bash

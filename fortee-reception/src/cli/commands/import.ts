@@ -5,10 +5,11 @@ import { CliError } from "../errors.ts";
 import { importForteeZip } from "../fortee-zip.ts";
 import { answerColumnsOf, describeEvent, eventOf } from "../references.ts";
 import type { Target } from "../target.ts";
-import { writeSnapshot } from "../workdir.ts";
+import { profileUrlTokensPath, readProfileUrlTokens, writeSnapshot } from "../workdir.ts";
 
 // import（Design Doc 8.1、8.3、FR-43）。fortee のダウンロード ZIP から、1 つのイベントのスナップショットを作り、
 // 作業ディレクトリ（.work/<環境名>/snapshots/{eventId}.json）に置く。D1 と KV には触れない。
+// 同じ作業ディレクトリに profile_url_token の補正ファイルがあれば、読む。
 // 再取り込みはイベント単位で、そのイベントのスナップショットだけを置き換える。
 // 参加者の情報は、ログに出さない。
 
@@ -40,12 +41,16 @@ export async function importZip(target: Target, config: ConfigBody, options: Imp
     slug: config.conference.slug,
     eventId: event.id,
     answerColumns: answerColumnsOf(config, event.id),
+    profileUrlTokens: await readProfileUrlTokens(target, event.id),
     now: deps.now(),
   });
   if (!result.ok) {
+    // 補正ファイルの置き場所は、誤りの文言ではなくここで出す。fortee-zip はファイルを知らない
+    const needsCorrection = result.errors.some((error) => error.includes("補正ファイル"));
     throw new CliError(
       `${describeEvent(event)} に ZIP を取り込めません（${result.errors.length} 件）。スナップショットは変えていません\n` +
-        result.errors.map((error) => `  ${error}`).join("\n"),
+        result.errors.map((error) => `  ${error}`).join("\n") +
+        (needsCorrection ? `\n補正ファイル: ${profileUrlTokensPath(target, event.id)}` : ""),
     );
   }
   for (const warning of result.warnings) deps.warn(`警告: ${warning}`);
