@@ -1,0 +1,153 @@
+# YAPC::Tokyo 2026 の設定（https://fortee.jp/yapc-tokyo-2026）
+#
+# イベントの ID と名前は、fortee のチケットショップ（/yapc-tokyo-2026/ticket-shop/index）のもの。
+# フォーム項目名は、docs/research/fortee/data-model.md の本番の表（2026-11-10 に閲覧）のもので、
+# 本番の ZIP とはまだ照らしていない。取り込み（import）が列の存在を確かめる（FR-43）。
+
+[conference]
+slug = "yapc-tokyo-2026"
+name = "YAPC::Tokyo 2026"
+timezone = "Asia/Tokyo"
+environment = "yapc-tokyo-2026"
+
+[[events]]
+id = "8b2e79c9-9301-4dca-ac12-7b686a1ec85e"
+name = "カンファレンス本編"
+key = "main"
+
+[[events]]
+id = "87e485da-0d45-432b-9943-4a5a3728bb2b"
+name = "前夜祭"
+key = "eve"
+
+[[events]]
+id = "78db606a-1e93-41b9-a531-7791dd68eee0"
+name = "懇親会"
+key = "party"
+
+# 託児所は、どの受付も受け付けない。設定に入れて取り込んでおくと、託児所の QR を
+# 「見つからない」ではなく「対象外のチケット」（FR-10）と案内できる
+[[events]]
+id = "64478c06-1fb2-4286-a7ab-32d0b2c9f350"
+name = "託児所"
+key = "nursery"
+
+[[receptions]]
+id = "eve"
+name = "前夜祭受付"
+periods = [
+  { start = 2026-11-27T17:30:00, end = 2026-11-27T20:30:00 },
+]
+accept = ["eve", "main"]
+require = ["eve"]
+checkin = ["eve", "main"]
+rejectMessage = "前夜祭チケットがありません"
+
+[[receptions]]
+id = "main"
+name = "本編受付"
+periods = [
+  { start = 2026-11-28T09:00:00, end = 2026-11-28T12:00:00 },
+  { start = 2026-11-29T09:00:00, end = 2026-11-29T18:30:00 },
+]
+accept = ["main"]
+require = ["main"]
+checkin = ["main"]
+rejectMessage = "本編チケットがありません"
+
+[[receptions]]
+id = "party"
+name = "懇親会受付"
+periods = [{ start = 2026-11-28T12:00:00, end = 2026-11-28T21:30:00 }]
+accept = ["party"]
+require = ["party"]
+checkin = ["party"]
+rejectMessage = "懇親会チケットがありません"
+
+[search]
+
+[[search.answers]]
+event = "main"
+field = "スピーカー名札に記載するお名前"
+
+[[display.answers]]
+event = "main"
+field = "Tシャツのサイズ"
+key = "tshirt"
+
+[[display.answers]]
+event = "main"
+field = "スピーカー名札に記載するお名前"
+key = "speakerName"
+
+[[display.ticketTypes]]
+event = "main"
+types = [
+  "【カンファレンス本編】一般チケット",
+  "【カンファレンス本編】一般チケット（特別請求）",
+  "【カンファレンス本編】学生チケット",
+  "【カンファレンス本編】U29チケット",
+  "【カンファレンス本編】スポンサーチケット",
+  "【カンファレンス本編】スタッフチケット",
+]
+key = "general"
+
+[[display.ticketTypes]]
+event = "main"
+types = ["【カンファレンス本編】個人スポンサーチケット"]
+key = "individualSponsor"
+
+[[display.ticketTypes]]
+event = "main"
+types = [
+  "【カンファレンス本編】ゲストチケット",
+  "【カンファレンス本編】スピーカーチケット",
+]
+key = "speaker"
+
+# ネームカードや配布物を種別ごとに案内するときは、[[display.ticketTypes]] を足して、
+# テンプレートから {{#typeIs.<key>}} で参照する。types には fortee の種別名そのものを書く
+# （例 "【カンファレンス本編】スタッフチケット"。【カンファレンス本編】も名前の一部）
+
+# 参考情報は HTML として表示される。改行と字下げは表示に出ないので、区切りはタグで書く。
+# 見出しは <h3>、手渡すものは <ul>、順に行うことは <ol> で書く（見た目は src/app/styles.css の .reference）
+#
+# 案内は、現在の受付がチェックインするイベントのものだけを出す（{{#reception.checkin.<イベントの key>}}）。
+# 本編の案内は、本編をチェックインする前夜祭受付と本編受付で出て、懇親会受付では出ない。
+# 受付そのもので分けるときは、{{#reception.is.<受付の id>}} を使う
+[template]
+reference = """
+{{#reception.checkin.main}}
+{{#byEvent.main}}
+<h3>本編受付で手渡すもの</h3>
+<ul>
+{{#typeIs.general}}
+<li>トートバッグ（一般用）</li>
+{{/typeIs.general}}
+{{#typeIs.individualSponsor}}
+<li>トートバッグ（個人スポンサー用）</li>
+<li>特別名札</li>
+{{/typeIs.individualSponsor}}
+{{#typeIs.speaker}}
+<li>トートバッグ（一般用）</li>
+<li>特別名札{{#answers.speakerName}}: <b>{{answers.speakerName}}</b>{{/answers.speakerName}}</li>
+<li>Tシャツ{{#answers.tshirt}}: <b>{{answers.tshirt}}</b>{{/answers.tshirt}}</li>
+{{/typeIs.speaker}}
+</ul>
+{{/byEvent.main}}
+{{/reception.checkin.main}}
+{{#reception.checkin.party}}
+{{#byEvent.party}}
+<h3>懇親会受付のリストバンド</h3>
+<ol>
+<li>20歳以上ですか？</li>
+<li>アルコールを飲みますか？
+<ul>
+<li>飲む: <b>オレンジ色</b>のリストバンド</li>
+<li>飲まない: <b>水色</b>のリストバンド</li>
+</ul>
+</li>
+</ol>
+{{/byEvent.party}}
+{{/reception.checkin.party}}
+"""
