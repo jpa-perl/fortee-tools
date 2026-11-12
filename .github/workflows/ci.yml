@@ -1,0 +1,61 @@
+name: CI
+
+# fortee-reception の検査とテスト（fortee-reception/docs/dev-setup.md の 3 章と 4.4 と同じコマンド）。
+# Cloudflare と Discord には通信しない。秘密は要らない。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # main への push は、途中で止めずに最後まで走らせる
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    working-directory: fortee-reception
+
+jobs:
+  check:
+    name: lint、型検査、単体テスト
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: fortee-reception/.node-version
+          cache: npm
+          cache-dependency-path: fortee-reception/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+
+  e2e:
+    name: 画面のテスト（Playwright）
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: fortee-reception/.node-version
+          cache: npm
+          cache-dependency-path: fortee-reception/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps webkit chromium
+      - run: npm run test:e2e
+      - name: 失敗したテストの出力を残す
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: playwright-test-results
+          path: fortee-reception/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
