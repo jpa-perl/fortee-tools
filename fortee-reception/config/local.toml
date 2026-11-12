@@ -1,0 +1,11 @@
+# ローカルの開発の設定（dev-setup 4.3）。どのカンファレンスの環境とも接続しない（Design Doc 3.6）。
+# 取り込む ZIP には fortee の Sandbox のものを使うので、スラッグは Sandbox のカンファレンスにする。
+#
+# いま読まれるのは [conference] だけである。イベント、受付、検索と表示の列、テンプレートは、
+# 設定の検証（validate）と取り込み（import）を実装するときに、Design Doc 4.2 の形で足す。
+
+[conference]
+slug = "yapc-tokyo-2026-sandbox"
+name = "YAPC::Tokyo 2026（ローカル）"
+timezone = "Asia/Tokyo"
+environment = "local"   # 公開先の環境名。CLI の --env と一致しなければ止まる

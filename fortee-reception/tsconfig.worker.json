@@ -1,0 +1,13 @@
+{
+  // worker: Cloudflare Workers。core に依存してよい（Design Doc 3.1）
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["@cloudflare/workers-types"],
+    "rootDir": "src/worker",
+    "outDir": ".tsbuild/worker",
+    "tsBuildInfoFile": ".tsbuild/worker.tsbuildinfo"
+  },
+  "include": ["src/worker/**/*.ts"],
+  "references": [{ "path": "./tsconfig.core.json" }]
+}

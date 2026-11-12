@@ -1,0 +1,20 @@
+{
+  // Node.js で動かすテスト（core、app、cli）と、Playwright の画面のテスト（Design Doc 11 章）
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "rootDir": "test",
+    "outDir": ".tsbuild/test",
+    "tsBuildInfoFile": ".tsbuild/test.tsbuildinfo"
+  },
+  "include": ["test/core/**/*", "test/app/**/*", "test/cli/**/*", "test/tooling/**/*", "test/e2e/**/*"],
+  "references": [
+    { "path": "./tsconfig.core.json" },
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.cli.json" },
+    { "path": "./tsconfig.build.json" }
+  ]
+}

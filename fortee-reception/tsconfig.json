@@ -1,0 +1,14 @@
+{
+  // project references の親。型の検査は `npm run typecheck`（tsc -b）で全層をまとめて行う（Design Doc 3.2）
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.core.json" },
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.sw.json" },
+    { "path": "./tsconfig.worker.json" },
+    { "path": "./tsconfig.cli.json" },
+    { "path": "./tsconfig.build.json" },
+    { "path": "./tsconfig.test.json" },
+    { "path": "./tsconfig.test-worker.json" }
+  ]
+}

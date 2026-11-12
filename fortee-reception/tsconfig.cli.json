@@ -1,0 +1,13 @@
+{
+  // cli: 管理者の端末の Node.js。core に依存してよい（Design Doc 3.1）
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "rootDir": "src/cli",
+    "outDir": ".tsbuild/cli",
+    "tsBuildInfoFile": ".tsbuild/cli.tsbuildinfo"
+  },
+  "include": ["src/cli/**/*.ts"],
+  "references": [{ "path": "./tsconfig.core.json" }]
+}

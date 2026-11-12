@@ -6,6 +6,10 @@
 
 本書のコマンドは、Design Doc 3.4 のリポジトリの構成と 8.1 の CLI を前提にしている。実装と、構築の最初に確かめること（Design Doc 12 章、[バックエンド](research/backend.md) 8 章、[フロントエンド](research/frontend.md) 7 章）の結果に合わせて、本書を直す。
 
+コマンドは、リポジトリの `fortee-reception/` で実行する（Design Doc 3.4）。
+
+2026-11-12 の時点で実装してあるのは、基盤である。各層の骨組みと依存の方向の検査、共有する契約のスキーマ、Worker のセッションの検証と配布物の配信、Service Worker とアプリの殻、CLI の `migrate` がある。Discord のログイン、同期、受付の画面と、CLI のほかのコマンド（`validate`、`import`、`preview`、`publish`、`export`、`restore-records`、`bump-generation`、`deploy`）は、まだない。まだないコマンドは、環境の照合（Design Doc 8.1）まで行ってから、実装していないことを知らせて終わる。したがって、いまの実装で実行できる手順は、3 章、4.1、4.2、4.4 である。4.2 で開く画面は、基盤の動作を確かめるための仮の画面で、ログインはできない。4.3 と 5 章以降は、残りを実装した後の手順である。
+
 ## 1. 用語
 
 | 用語 | 意味 |
@@ -19,7 +23,7 @@
 
 | 対象 | 用途 | 備考 |
 | --- | --- | --- |
-| Node.js（LTS） | ビルド、テスト、管理 CLI、wrangler | 版は `package.json` の `engines` と `.node-version` で固定する。wrangler と Vite が求める版を満たすものを、構築の最初に選ぶ |
+| Node.js（LTS） | ビルド、テスト、管理 CLI、wrangler | 版は `package.json` の `engines` と `.node-version` で固定する。wrangler と Vite が求める版を満たすものとして、26.13.0 を選んだ（`engines` は `^26.13.0`）。管理 CLI は、この Node.js が TypeScript をそのまま実行する（Design Doc 3.2） |
 | npm | 依存関係の導入 | Node.js に同梱のもの |
 | Git | ソースの取得、リリース名 | `deploy` がリリース名に `git describe` を使う（Design Doc 8.1） |
 | Cloudflare のアカウントと API トークン | 環境の作成、デプロイ、管理 CLI | トークンの権限はバックエンド 4 章のとおり、操作ごとに絞る。4 章の表にない操作では、D1 と KV の作成とマイグレーションに D1 と Workers KV Storage の Edit、デプロイと秘密の設定に Workers Scripts の Edit を付ける（ほかに要る権限は、環境を作るときに確かめる）。トークンには、作る管理者のメンバーのロールが持つ権限までしか付けられないので、管理者には、これらの権限を含むロールを与えておく。Workers Platform Admin で足りる（バックエンド 4 章）。`wrangler login` は使わない。`--scopes` で OAuth のスコープを選べるが、API トークンなら、D1 と KV の読み取りだけの権限と編集の権限を、操作ごとに作り分けられる（バックエンド 4 章）。`--scopes` で同じ粒度に絞れるかは確かめていない |
@@ -108,7 +112,7 @@ npm run typecheck
 npm run lint
 ```
 
-`npm test` は core、app、worker、cli の Vitest を、`npm run test:e2e` は Playwright の画面のテストを動かす。何を確かめるかは Design Doc 11 章にある。
+`npm test` は core、app、worker、cli の Vitest と、lint の規則が違反を検出することの検査（Design Doc 3.2）を、`npm run test:e2e` は Playwright の画面のテストを動かす。何を確かめるかは Design Doc 11 章にある。
 
 ## 5. カンファレンスの環境を作る
 
@@ -186,7 +190,7 @@ npm run lint
 
 1. マイグレーションを 1 つの初期のマイグレーションにまとめる（Design Doc 9.6）。ファイルには、v1 より前に使ったどのファイル名とも重ならない名前を付け（たとえば `0001_v1.sql`）、表は `IF NOT EXISTS` を付けずに作る。wrangler は、マイグレーションが適用済みかをファイル名だけで判定するので、開発中と同じ名前だと、v1 より前の D1 でも適用済みと扱われる（Design Doc 3.6）
 2. D1 を作り直す。D1 を消して 5 章の 3 で作り直し、`wrangler.jsonc` の ID を書き換える（5 章の 4）。v1 より前のデータを引き継がないためである（Design Doc 3.6）。作り直しを忘れた D1 では、1 の名前の付け方により、4 の `migrate` が表の重複で失敗し、`deploy` もマイグレーションの照合で止まる
-3. 1 と 2 の変更をコミットし、そのコミットに `v1` のタグを付ける。`deploy` は未コミットの変更があると止まり、デプロイの記録にはリリース名（`git describe`）が残る（Design Doc 8.1）ので、タグを付けたコミットをそのままデプロイする
+3. 1 と 2 の変更をコミットし、そのコミットに `fortee-reception/v1` のタグを付ける（リポジトリをほかの道具と分け合うので、タグには接頭辞を付ける。リリース名は、接頭辞を除いた `v1` である。Design Doc 8.1）。`deploy` は未コミットの変更があると止まり、デプロイの記録にはリリース名（`git describe`）が残る（Design Doc 8.1）ので、タグを付けたコミットをそのままデプロイする
 4. タグを付けた木から、作り直した D1 にマイグレーションを適用し、デプロイする。`migrate` は、作り直した D1 に環境の印を書く
 
    ```bash

@@ -1,0 +1,15 @@
+{
+  // app: ブラウザ。core に依存してよい（Design Doc 3.1）
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "rootDir": "src/app",
+    "outDir": ".tsbuild/app",
+    "tsBuildInfoFile": ".tsbuild/app.tsbuildinfo"
+  },
+  "include": ["src/app/**/*.ts", "src/app/**/*.tsx"],
+  "references": [{ "path": "./tsconfig.core.json" }]
+}

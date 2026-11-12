@@ -1,0 +1,12 @@
+{
+  // core: どの実行環境にも依存しない。DOM、Workers、Node.js の型を含めない（Design Doc 3.1）
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": [],
+    "rootDir": "src/core",
+    "outDir": ".tsbuild/core",
+    "tsBuildInfoFile": ".tsbuild/core.tsbuildinfo"
+  },
+  "include": ["src/core/**/*.ts"]
+}

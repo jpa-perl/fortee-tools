@@ -1,0 +1,13 @@
+{
+  // Workers の実行環境（workerd）で動かす worker のテスト（Design Doc 11 章）
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["@cloudflare/workers-types", "@cloudflare/vitest-plugin/types"],
+    "rootDir": "test/worker",
+    "outDir": ".tsbuild/test-worker",
+    "tsBuildInfoFile": ".tsbuild/test-worker.tsbuildinfo"
+  },
+  "include": ["test/worker/**/*"],
+  "references": [{ "path": "./tsconfig.core.json" }, { "path": "./tsconfig.worker.json" }]
+}

@@ -1,0 +1,122 @@
+/*
+ * CSS の入口（Design Doc 6.12）。
+ * 既定のテーマをすべて消し、画面設計書 2.10 と 2.11 が定める値だけをトークンとして定める。
+ * テーマの名前で引くクラス（text-lg、rounded-xl、shadow-md、bg-red-500 など）は生成されない。
+ * 任意の値（text-[15px]、bg-(--color-ok)）と rounded-full は、lint で禁じる（eslint.config.js）。
+ * 色、文字サイズ、角丸の値は、カンプに使った仮の値である。
+ */
+/*
+ * クラスを探す範囲を、受付アプリのソース（このファイルのあるディレクトリ以下）に限る。
+ * 限らないと、Tailwind CSS はプロジェクトの全体を走査し、docs/ の文書や lint の設定に例として書いた
+ * クラス（rounded-full、bg-(--color-ok) など）まで CSS に出力する
+ */
+@import "tailwindcss" source(none);
+@source "./";
+
+/* static を付けて、使っていないトークンも CSS 変数として出力させる。@layer components から var() で参照できる */
+@theme static {
+  --*: initial;
+
+  /*
+   * 色。色の名前ではなく、使い道（画面設計書 2.2 の役割）の名前で定める。
+   * 1 つの色が複数の役割に使われているときは、役割ごとに別のトークンにして、同じ値を置く。
+   * --color-on-* は、その色の上に載せる文字とマークの色
+   */
+  --color-ok: #18803e; /* 成功: S04 の帯、「今回」のマークの塗り */
+  --color-on-ok: #ffffff;
+  --color-ok-soft: #e2f2e6; /* 「今回」の行の背景 */
+  --color-warn: #f2c12e; /* 注意: S04 の帯、ヘッダの「手動」の塗り */
+  --color-on-warn: #1d1a10;
+  --color-reject: #c62828; /* 拒否: S04 の帯 */
+  --color-on-reject: #ffffff;
+  --color-caution: #c62828; /* 注意を要する操作: 枠線、文字、⚠（塗らない） */
+  --color-confirm: #c62828; /* 確定: 確認シートの確定ボタンと「ログアウト」の塗り */
+  --color-on-confirm: #ffffff;
+  --color-primary: #1f4fa0; /* 通常の操作: 主ボタンの塗り */
+  --color-on-primary: #ffffff;
+  --color-selected: #1f4fa0; /* 選んでいることを示す枠と印 */
+  --color-focus: #1f4fa0; /* フォーカスの輪郭（画面設計書 2.11） */
+  --color-ink: #15181c; /* 文字、アイコン、枠線のボタンの文字 */
+  --color-ink-sub: #5e6670; /* 補助の情報、「自動」、「受付なし」 */
+  --color-done: #15181c; /* 済み: 「済」のマークの塗り */
+  --color-on-done: #ffffff;
+  --color-pending: #858b93; /* 未: 「未」のマークの枠線 */
+  --color-disabled: #858b93; /* 無効: 押せない状態のボタンの文字 */
+  --color-disabled-surface: #e3e6ea; /* 押せない状態のボタンの地 */
+  --color-inactive-surface: #e3e6ea; /* 受付なしのときの受付のカードの地 */
+  --color-outline: #7d848d; /* 押せる要素の枠線 */
+  --color-divider: #d3d8de; /* 押せない情報のまとまりを分ける線 */
+  --color-surface: #ffffff; /* ヘッダ、下部固定、一覧、シート、ダイアログ、枠線のボタンの地 */
+  --color-ground: #f3f4f6; /* 画面の地 */
+
+  /* 文字サイズ。この 6 段だけを使う（画面設計書 2.10） */
+  --text-1: 28px; /* 結果名、S04 のユーザ名 */
+  --text-2: 22px; /* 画面の見出しに当たる文字 */
+  --text-3: 17px; /* 本文、ボタン、アンケートの回答 */
+  --text-4: 16px; /* 入力欄の文字だけ。iOS は、これより小さい入力欄にフォーカスすると画面を拡大する */
+  --text-5: 15px; /* 補助の情報 */
+  --text-6: 13px; /* タグ */
+
+  /* 押せる要素の角丸（シートとダイアログの角も同じ値）と、余白の基準 */
+  --radius-pressable: 12px;
+  --spacing: 4px;
+
+  /*
+   * フォント。並びの先頭は、日本語のフォント名でなければならない（フロントエンド 2.1）。
+   * Preflight が根要素に当てるのは --default-font-family で、--*: initial はこの指定も消すので、定め直す
+   */
+  --font-sans: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+  --default-font-family: var(--font-sans);
+
+  /* transition のユーティリティの既定の時間と緩急。消えたままだと 0 秒になる（画面設計書 2.11） */
+  --default-transition-duration: 200ms;
+  --default-transition-timing-function: cubic-bezier(0, 0, 0.2, 1);
+
+  /* 回転するアイコン。1 秒に 1 回転 */
+  --animate-spin: spin 1s linear infinite;
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+}
+
+/* 表示領域の高さが足りないとき（画面設計書 1.2）。ホームの配置を崩す条件に使う */
+@custom-variant short (@media (height < 560px));
+
+@layer base {
+  body {
+    background-color: var(--color-ground);
+    color: var(--color-ink);
+    font-size: var(--text-3);
+  }
+
+  /*
+   * フォーカスの輪郭（画面設計書 2.11）。要素ごとのクラスでは書かず、ここですべての要素に当てる。
+   * :focus-visible は、キーボードで操作したときと、入力欄にフォーカスしたときに当たる。<dialog> 自身には出さない
+   */
+  :focus-visible {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+  dialog:focus-visible {
+    outline: none;
+  }
+}
+
+@layer components {
+  /* 安全領域。画面の上部固定と下部固定に付ける */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* 端末で動きを減らす設定をしているときは、回転させず、同じ形のまま静止させる（画面設計書 2.11） */
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin {
+    animation: none;
+  }
+}

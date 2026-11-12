@@ -1,0 +1,32 @@
+{
+  // 全層に共通の設定。層ごとの lib と types は tsconfig.<層>.json で定める（Design Doc 3.1、3.2）
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+
+    // 相対パスの import には拡張子（.ts、.tsx）を付ける。Node.js が CLI の TypeScript をそのまま実行でき、
+    // Vite が設定ファイルをそのまま読み込める。型を消すだけで動く構文に限る（enum などを使わない）
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+
+    // project references。型の検査だけを行い、宣言ファイルを .tsbuild/ に出す。
+    // composite を付けると、include にも references にもないファイルの import が誤りになる
+    "composite": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    // 誤りがあるときは何も出さない。層をまたぐ import の誤りがあると、
+    // 出力先の外（src/ の中）に宣言ファイルが出てしまうのを防ぐ
+    "noEmitOnError": true,
+
+    // @types の自動の取り込みを止め、層ごとに明示する
+    "types": []
+  }
+}

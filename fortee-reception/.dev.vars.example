@@ -1,0 +1,13 @@
+# ローカルの開発で Worker に渡す秘密（dev-setup 4.1、Design Doc 3.6）。
+# このファイルを .dev.vars に写して、値を書く。.dev.vars はコミットしない。
+#
+# Discord の値は、本番と同じアプリケーションとギルドのもの。
+# アプリケーションのリダイレクト URI に http://localhost:5173/auth/discord/callback を加えておく
+DISCORD_CLIENT_ID=
+DISCORD_CLIENT_SECRET=
+DISCORD_GUILD_ID=
+# 受付スタッフのロール ID。カンマ区切り
+DISCORD_ROLE_IDS=
+
+# 暗号論的疑似乱数で生成した 32 バイトの値。たとえば openssl rand -base64 32
+SESSION_SECRET=

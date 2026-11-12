@@ -1,0 +1,13 @@
+{
+  // ビルドと検査の道具（Vite、Vitest、Playwright の設定と、build/ の Vite プラグイン）。Node.js で動く
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "rootDir": ".",
+    "outDir": ".tsbuild/build",
+    "tsBuildInfoFile": ".tsbuild/build.tsbuildinfo"
+  },
+  "include": ["vite.config.ts", "vitest.config.ts", "playwright.config.ts", "build/**/*.ts"],
+  "references": [{ "path": "./tsconfig.core.json" }, { "path": "./tsconfig.cli.json" }]
+}

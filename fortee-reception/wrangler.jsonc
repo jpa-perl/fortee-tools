@@ -1,0 +1,49 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+
+  // 最上位: ローカルの開発用。リモートの資源を指さない（Design Doc 3.6）。
+  // D1 と KV の ID は実在しない仮の値で、--env を付け忘れた wrangler のコマンドは
+  // どのカンファレンスの D1 と KV にも届かずに失敗する。
+  "name": "checkin-local",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-11-01",
+
+  // /api/ と /auth/ 以下だけを静的アセットより先に Worker に送る（Design Doc 7.1）。
+  // directory は Cloudflare の Vite プラグインが、ビルドの出力先に合わせて書き込む（Design Doc 3.5）。
+  // not_found_handling は使わない（Design Doc 7.1）。
+  "assets": {
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/auth/*"]
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "checkin-local",
+      "database_id": "local",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "kv_namespaces": [{ "binding": "KV", "id": "local" }],
+
+  // Workers Logs（Design Doc 7.6、バックエンド 8.1）
+  "observability": { "enabled": true },
+
+  // カンファレンスの環境は、環境名（fortee のスラッグ）ごとにここへ足す（dev-setup 5 章の 4）。
+  // d1_databases と kv_namespaces は最上位から引き継がれないので、環境ごとに書く。
+  //
+  // "yapc-tokyo-2026": {
+  //   "name": "checkin-yapc-tokyo-2026",
+  //   "account_id": "<アカウント ID>",
+  //   "d1_databases": [
+  //     {
+  //       "binding": "DB",
+  //       "database_name": "checkin-yapc-tokyo-2026",
+  //       "database_id": "<D1 の ID>",
+  //       "migrations_dir": "migrations"
+  //     }
+  //   ],
+  //   "kv_namespaces": [{ "binding": "KV", "id": "<KV の名前空間の ID>" }]
+  // }
+  "env": {}
+}

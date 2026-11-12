@@ -1,0 +1,26 @@
+# 依存関係
+node_modules/
+
+# ビルドの出力（vite build、tsc -b）
+dist/
+.tsbuild/
+*.tsbuildinfo
+
+# ローカルの模擬環境（Miniflare）のデータ。Design Doc 3.6
+.wrangler/
+
+# ローカルの開発で Worker に渡す秘密。名前の一覧は .dev.vars.example に置く。Design Doc 3.4
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+# CLI の作業ディレクトリ。参加者の情報を含む。Design Doc 3.4、dev-setup 9 章
+.work/
+
+# テストの出力
+test-results/
+playwright-report/
+coverage/
+
+# OS とエディタ
+.DS_Store
