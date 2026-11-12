@@ -4,3 +4,5 @@
 declare const __APP_RELEASE__: string;
 /** カンファレンスの表示名。公開された設定を取得する前（S01 の「未ログイン」）にも出すために埋め込む */
 declare const __CONFERENCE_NAME__: string;
+/** テスト用の入口（commands/test-hook.ts）を入れるビルドか。開発サーバと、画面のテストのビルドだけが true */
+declare const __TEST_HOOK__: boolean;

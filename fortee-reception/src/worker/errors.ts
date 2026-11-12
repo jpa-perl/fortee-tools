@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
+import type { AppEnv } from "./env.ts";
 
 // エラー応答の種類（Design Doc 7.6）。応答は { "error": "<種類>" } の JSON
 const STATUS = {
@@ -25,11 +26,13 @@ function kindOfStatus(status: number): ErrorKind {
 }
 
 /** Hono のエラーハンドラ。スタックトレースを応答に含めない */
-export function handleError(err: Error, c: Context): Response {
+export function handleError(err: Error, c: Context<AppEnv>): Response {
   if (err instanceof HTTPException) {
     return errorResponse(c, kindOfStatus(err.status));
   }
-  // 記録の中身、Cookie、トークンを出さない（Design Doc 7.6）。出すのは例外の名前だけにする
-  console.error(JSON.stringify({ route: c.req.path, status: 500, error: err.name }));
+  // 記録の中身、Cookie、トークンを出さない（Design Doc 7.6）。要求のログの行に、例外の名前だけを足す。
+  // 例外の文言は、D1 の誤りでは文の一部を含みうるので出さない
+  const log = c.get("log");
+  if (log !== undefined) log.reason = err.name;
   return errorResponse(c, "internal");
 }

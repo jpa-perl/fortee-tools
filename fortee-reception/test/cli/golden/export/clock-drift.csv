@@ -1,0 +1,2 @@
+device_id,device_name,clock_offset_ms,measured_at,max_abs_offset_ms,max_measured_at
+0a1b2000-0000-4000-8000-00000000000b,端末 3AFL,-900,2026-11-28T09:45:00+09:00,400000,2026-11-28T09:35:00+09:00

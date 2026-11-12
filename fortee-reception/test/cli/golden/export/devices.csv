@@ -1,0 +1,3 @@
+device_id,device_name,measured_at,clock_offset_ms,max_abs_offset_ms,app_version
+0a1b2000-0000-4000-8000-00000000000b,端末 3AFL,2026-11-28T09:45:00+09:00,-900,400000,v1.1.0-3-g54bfc78
+7f3c0000-0000-4000-8000-00000000000a,端末 HWY2,2026-11-28T09:46:40+09:00,1200,1500,v1.2.0

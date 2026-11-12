@@ -9,6 +9,7 @@ import * as wrangler from "../../src/cli/wrangler.ts";
 vi.mock("../../src/cli/wrangler.ts", () => ({
   applyMigrations: vi.fn(),
   pendingMigrations: vi.fn(),
+  unknownAppliedMigrations: vi.fn(),
   localMigrations: vi.fn(),
   d1Execute: vi.fn(),
   kvGet: vi.fn(),
@@ -22,6 +23,7 @@ function unmarkedEnvironment(): void {
   vi.mocked(wrangler.d1Execute).mockImplementation(async (_target, sql) =>
     sql.includes("sqlite_master") ? [{ found: 1 }] : [],
   );
+  vi.mocked(wrangler.unknownAppliedMigrations).mockResolvedValue([]);
   vi.mocked(wrangler.kvGet).mockResolvedValue(null);
   vi.mocked(wrangler.kvPut).mockResolvedValue(undefined);
   // 適用の確認で取り消されても、wrangler は成功として終わる

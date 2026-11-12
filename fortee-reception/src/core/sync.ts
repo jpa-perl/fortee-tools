@@ -72,3 +72,45 @@ export const meResponseSchema = z.object({
   operatorName: z.string().check(z.maxLength(NAME_MAX_LENGTH)),
 });
 export type MeResponse = z.infer<typeof meResponseSchema>;
+
+// 同期の状態（画面設計書 2.3）
+
+/**
+ * ヘッダに出す同期の状態。
+ *
+ * - syncing: 同期中
+ * - offline: オフライン（端末がネットワークにつながっていない）
+ * - needsLogin: 再ログインが必要
+ * - failed: 同期の失敗
+ * - pending: 未同期あり
+ * - synced: 同期済み
+ */
+export type SyncStatus = "syncing" | "offline" | "needsLogin" | "failed" | "pending" | "synced";
+
+/** 同期の状態を決める条件。複数が同時に真になりうる */
+export type SyncConditions = {
+  /** 同期の要求を送っている */
+  syncing: boolean;
+  /** 端末がネットワークにつながっていない */
+  offline: boolean;
+  /** セッションがないか、期限が切れている（同期が 401 を返した） */
+  needsLogin: boolean;
+  /** 直前の同期が失敗した */
+  failed: boolean;
+  /** 未送信の記録がある */
+  hasUnsent: boolean;
+};
+
+/**
+ * 同期の状態の優先順（画面設計書 2.3）。同期中、オフライン、再ログインが必要、同期の失敗、未同期あり、
+ * 同期済みの順に見て、最初に当てはまったものを返す。
+ * オフラインのときに未同期の記録があるか（アイコンの印）は、呼び出し側が hasUnsent で見る
+ */
+export function pickSyncStatus(conditions: SyncConditions): SyncStatus {
+  if (conditions.syncing) return "syncing";
+  if (conditions.offline) return "offline";
+  if (conditions.needsLogin) return "needsLogin";
+  if (conditions.failed) return "failed";
+  if (conditions.hasUnsent) return "pending";
+  return "synced";
+}

@@ -64,11 +64,24 @@ describe("migrate と環境の印（Design Doc 3.6、8.1）", () => {
       await expect(migrate(target, silent)).rejects.toThrow(/D1 の環境の印/);
       await expect(assertReady(target)).rejects.toThrow(/D1 の環境の印/);
 
-      // D1 だけを作り直したとき（v1 への切り替え）は、KV の印が残り、D1 の印だけを書く
+      // D1 だけを作り直したとき（運用を始める前の作り直し）は、KV の印が残り、D1 の印だけを書く
       await d1Execute(target, "DELETE FROM meta WHERE key = 'environment'");
       const lines: string[] = [];
       await migrate(target, (line) => lines.push(line));
       expect(lines.filter((line) => line.includes("環境の印"))).toEqual(["D1 に環境の印（local）を書きました"]);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "CLI が持たないマイグレーションが適用済みの D1 では、適用の前に止まる（改名する前の版で作った D1）",
+    async () => {
+      await migrate(target, silent);
+      const [first] = await localMigrations();
+      await d1Execute(target, `UPDATE d1_migrations SET name = '0000_renamed_before.sql' WHERE name = '${first}'`);
+      await expect(migrate(target, silent)).rejects.toThrow(/この CLI が持たないマイグレーション.*0000_renamed_before\.sql/);
+      // 適用を試みていない。名前の違うファイルは、未適用のままである
+      expect(await pendingMigrations(target)).toEqual([first]);
     },
     TIMEOUT,
   );

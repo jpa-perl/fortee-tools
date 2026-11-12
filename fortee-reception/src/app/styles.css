@@ -48,6 +48,14 @@
   --color-divider: #d3d8de; /* 押せない情報のまとまりを分ける線 */
   --color-surface: #ffffff; /* ヘッダ、下部固定、一覧、シート、ダイアログ、枠線のボタンの地 */
   --color-ground: #f3f4f6; /* 画面の地 */
+  /* ここから下は、画面設計書 2.10 の表にない色。カンプを参考に実装で決めた */
+  --color-emphasis: #f9e7a6; /* 受付の強調（画面設計書 2.7）。上に載せる文字は文字の色 */
+  --color-camera: #15181c; /* カメラの映像の地（映像が出るまでと、許可待ち） */
+  --color-on-camera: #ffffff; /* 映像に重ねる読み取り枠、バナー、アイコン */
+  --color-notice: #15181c; /* 知らせの地 */
+  --color-on-notice: #ffffff;
+  --color-scrim: rgb(0 0 0 / 0.4); /* シートとダイアログの後ろの画面を覆う色 */
+  --color-shadow: rgb(0 0 0 / 0.25); /* 画面に重なるものの影 */
 
   /* 文字サイズ。この 6 段だけを使う（画面設計書 2.10） */
   --text-1: 28px; /* 結果名、S04 のユーザ名 */
@@ -56,6 +64,9 @@
   --text-4: 16px; /* 入力欄の文字だけ。iOS は、これより小さい入力欄にフォーカスすると画面を拡大する */
   --text-5: 15px; /* 補助の情報 */
   --text-6: 13px; /* タグ */
+
+  /* 文字の太さ。太字の 1 種類だけを使う（画面設計書 2.10 にない値で、カンプを参考に決めた） */
+  --font-weight-bold: 700;
 
   /* 押せる要素の角丸（シートとダイアログの角も同じ値）と、余白の基準 */
   --radius-pressable: 12px;
@@ -89,6 +100,13 @@
     background-color: var(--color-ground);
     color: var(--color-ink);
     font-size: var(--text-3);
+    /* 画面の端で引いたときに、ページごと動いたり、読み込み直しが始まったりしないようにする */
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* 続けて叩いたときに、拡大されないようにする */
+  button {
+    touch-action: manipulation;
   }
 
   /*
@@ -105,6 +123,201 @@
 }
 
 @layer components {
+  /*
+   * ホーム（S02〜S04）の上の領域。どの状態でも同じ位置と高さで、画面の上 3 分の 1 程度を占める。
+   * 中身が収まらないときだけ、下に伸びる（画面設計書 S02〜S04）。カンプでは 844px の高さに対して 263px
+   */
+  .home-top {
+    min-height: 31dvh;
+  }
+
+  /*
+   * チケットの一覧（画面設計書 2.9）。状態のマークと文字を、左端に縦にそろえる。
+   * 列は、マーク、状態の文字、チケット番号と種別、右端の添えもの
+   */
+  .ticket-list {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    column-gap: calc(var(--spacing) * 2);
+  }
+  .ticket-list > *,
+  .ticket-group > *,
+  .ticket-row {
+    grid-column: 1 / -1;
+  }
+  .ticket-group,
+  .ticket-row {
+    display: grid;
+    grid-template-columns: subgrid;
+  }
+  .ticket-row {
+    align-items: center;
+    text-align: left;
+  }
+  /* 行の下に出す回答は、チケット番号の列にそろえる */
+  .ticket-answers {
+    grid-column: 3 / -1;
+  }
+
+  /* オン・オフの切り替え（S09）。丸い形は、角丸のトークンにせず、ここに書く（Design Doc 6.12） */
+  .switch-track {
+    position: relative;
+    width: 52px;
+    height: 32px;
+    border-radius: 16px;
+    background-color: var(--color-outline);
+  }
+  .switch-track::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background-color: var(--color-surface);
+  }
+  [aria-checked="true"] > .switch-track {
+    background-color: var(--color-selected);
+  }
+  [aria-checked="true"] > .switch-track::after {
+    left: 23px;
+  }
+
+  /* チェックボックスとラジオボタン（S08-M1）。印の色を、選んでいることを示す色にする */
+  .choice-input {
+    width: 24px;
+    height: 24px;
+    flex: none;
+    accent-color: var(--color-selected);
+  }
+
+  /*
+   * 検索の入力欄（S05、S07）。枠は、アイコンと入力欄を囲む要素が持つ。フォーカスの輪郭も、入力欄ではなく、
+   * 枠の外に出す。入力欄には、タップで入力を始めたときにも出る（画面設計書 2.11）
+   */
+  .field:has(input:focus-visible) {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+  .field > input:focus-visible {
+    outline: none;
+  }
+
+  /* シートのつまみ */
+  .sheet-grip {
+    width: 40px;
+    height: 4px;
+    border-radius: 2px;
+    background-color: var(--color-outline);
+  }
+
+  /*
+   * 画面に重なるもの（シート、ダイアログ、画面の下の知らせ）。影は、ここにだけ書く（画面設計書 2.10）。
+   * Preflight が余白を消すので、<dialog> の位置は、ここで決め直す
+   */
+  .sheet,
+  .dialog-box {
+    position: fixed;
+    max-height: calc(100dvh - var(--spacing) * 12);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background-color: var(--color-surface);
+    color: var(--color-ink);
+    box-shadow: 0 0 24px var(--color-shadow);
+  }
+  .sheet {
+    inset: auto 0 0 0;
+    width: 100%;
+    max-width: 560px;
+    margin: 0 auto;
+    padding-bottom: env(safe-area-inset-bottom);
+    border-radius: var(--radius-pressable) var(--radius-pressable) 0 0;
+    animation: sheet-in var(--default-transition-duration) var(--default-transition-timing-function);
+  }
+  .sheet[data-closing] {
+    animation: sheet-out var(--default-transition-duration) var(--default-transition-timing-function) forwards;
+  }
+  /* 参考情報（S04-M1）は、画面の下半分程度の高さで開く */
+  .sheet-half {
+    min-height: 50dvh;
+  }
+  .dialog-box {
+    inset: 0;
+    width: calc(100% - var(--spacing) * 12);
+    max-width: 400px;
+    height: fit-content;
+    margin: auto;
+    border-radius: var(--radius-pressable);
+    animation: dialog-in var(--default-transition-duration) var(--default-transition-timing-function);
+  }
+  .dialog-box[data-closing] {
+    animation: dialog-out var(--default-transition-duration) var(--default-transition-timing-function) forwards;
+  }
+  .sheet::backdrop,
+  .dialog-box::backdrop {
+    background-color: var(--color-scrim);
+    animation: backdrop-in var(--default-transition-duration) linear;
+  }
+  .sheet[data-closing]::backdrop,
+  .dialog-box[data-closing]::backdrop {
+    animation: backdrop-out var(--default-transition-duration) linear forwards;
+  }
+  /* ヘッダのない画面の知らせの位置。ヘッダ（安全領域と、高さ 56px）があるときと同じ位置に出す */
+  .notice-bare {
+    top: calc(env(safe-area-inset-top) + var(--spacing) * 16);
+  }
+  .notice {
+    background-color: var(--color-notice);
+    color: var(--color-on-notice);
+    border-radius: var(--radius-pressable);
+    box-shadow: 0 4px 16px var(--color-shadow);
+  }
+
+  /* 受付の強調（画面設計書 2.7）。色だけで強調し、動かさない */
+  .emphasis {
+    background-color: var(--color-emphasis);
+    animation: emphasis-in 600ms ease-out;
+  }
+
+  @keyframes sheet-in {
+    from {
+      transform: translateY(100%);
+    }
+  }
+  @keyframes sheet-out {
+    to {
+      transform: translateY(100%);
+    }
+  }
+  @keyframes dialog-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+  }
+  @keyframes dialog-out {
+    to {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+  }
+  @keyframes backdrop-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes backdrop-out {
+    to {
+      opacity: 0;
+    }
+  }
+  @keyframes emphasis-in {
+    from {
+      background-color: transparent;
+    }
+  }
+
   /* 安全領域。画面の上部固定と下部固定に付ける */
   .safe-top {
     padding-top: env(safe-area-inset-top);
@@ -117,6 +330,18 @@
 /* 端末で動きを減らす設定をしているときは、回転させず、同じ形のまま静止させる（画面設計書 2.11） */
 @media (prefers-reduced-motion: reduce) {
   .animate-spin {
+    animation: none;
+  }
+  /* シートとダイアログは、動かさずに、出し入れだけをする。受付の強調も、色を変えるだけにする */
+  .sheet,
+  .dialog-box,
+  .sheet::backdrop,
+  .dialog-box::backdrop,
+  .sheet[data-closing],
+  .dialog-box[data-closing],
+  .sheet[data-closing]::backdrop,
+  .dialog-box[data-closing]::backdrop,
+  .emphasis {
     animation: none;
   }
 }

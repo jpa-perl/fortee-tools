@@ -6,6 +6,7 @@ import { PROJECT_ROOT } from "../src/cli/paths.ts";
 import { describeRelease } from "../src/cli/release.ts";
 import { configureJapaneseMessages } from "../src/core/messages.ts";
 import { APP_VERSION_MAX_LENGTH } from "../src/core/sync.ts";
+import { APP_ICONS, appIconPng } from "./app-icon.ts";
 
 // 受付アプリの殻（アプリシェル）のビルド時の埋め込み（Design Doc 6.11）。
 //
@@ -17,6 +18,8 @@ import { APP_VERSION_MAX_LENGTH } from "../src/core/sync.ts";
 // - このビルドのキャッシュ名を、受付アプリ（index.html の meta）にも埋め込む
 // - 設定ファイルを読み、カンファレンスの表示名を受付アプリと manifest.webmanifest に埋め込む
 // - リリース名を受付アプリに埋め込む
+// - テスト用の入口（src/app/commands/test-hook.ts）を入れるかを、受付アプリに埋め込む
+// - ホーム画面のアイコンを描いて、受付アプリの出力に加える（app-icon.ts）
 //
 // vite-plugin-pwa を使わない理由は、フロントエンド 5.2 にある。
 
@@ -24,6 +27,9 @@ import { APP_VERSION_MAX_LENGTH } from "../src/core/sync.ts";
 const CONFIG_ENV = "CHECKIN_CONFIG";
 /** リリース名。CLI の deploy が渡す。なければ git describe から求める */
 const RELEASE_ENV = "CHECKIN_RELEASE";
+
+/** テスト用の入口（window.__checkinTest）を入れるビルドにする。画面のテストのサーバ（test/e2e/setup/serve.ts）が渡す */
+const TEST_HOOK_ENV = "CHECKIN_TEST_HOOK";
 
 const SW_ENTRY = join(PROJECT_ROOT, "src/sw/sw.ts");
 const SW_FILE = "sw.js";
@@ -69,6 +75,16 @@ function webManifest(conferenceName: string): string {
     display: "standalone",
     // Android のインストールしたアプリでは縦向きに固定する。Safari は対応していない（Design Doc 6.8）
     orientation: "portrait",
+    // 起動のときの地の色と、ヘッダの面の色（画面設計書 2.10）
+    background_color: "#f3f4f6",
+    theme_color: "#ffffff",
+    icons: APP_ICONS.filter((icon) => icon.fileName.startsWith("icon-")).map((icon) => ({
+      src: `/${icon.fileName}`,
+      sizes: `${icon.size}x${icon.size}`,
+      type: "image/png",
+      // 地を全面に塗ってあるので、切り抜かれる形（maskable）にも使える
+      purpose: "any maskable",
+    })),
   });
 }
 
@@ -84,11 +100,18 @@ export function appShell(): Plugin {
       isBuild = command === "build";
       // 設定ファイルの誤りを、読める文言で出す
       configureJapaneseMessages();
-      conferenceName = (await readConfigFileHead(configPath())).conference.name;
+      const { conference } = await readConfigFileHead(configPath());
+      conferenceName = conference.name;
+      // テスト用の入口を入れるのは、ローカルの開発の設定でのビルドに限る。CLI の deploy は、呼んだシェルの
+      // 環境変数をビルドに引き継ぐ。CHECKIN_TEST_HOOK が残っていても、カンファレンスの環境のビルドには入れない
+      const testHook = conference.environment === "local" && (command === "serve" || process.env[TEST_HOOK_ENV] === "1");
       return {
         define: {
           __APP_RELEASE__: JSON.stringify(releaseName()),
           __CONFERENCE_NAME__: JSON.stringify(conferenceName),
+          // テスト用の入口は、ローカルの開発サーバと、画面のテストのビルドにだけ入れる。本番のビルド（CLI の
+          // deploy）では false に置き換わり、入口のコードごと出力から落ちる。QR の文字列の手入力は提供しない（FR-27）
+          __TEST_HOOK__: JSON.stringify(testHook),
         },
       };
     },
@@ -97,6 +120,8 @@ export function appShell(): Plugin {
       return [
         { tag: "title", children: conferenceName, injectTo: "head" },
         { tag: "meta", attrs: { name: "apple-mobile-web-app-title", content: conferenceName }, injectTo: "head" },
+        { tag: "link", attrs: { rel: "icon", type: "image/png", href: "/icon-192.png" }, injectTo: "head" },
+        { tag: "link", attrs: { rel: "apple-touch-icon", href: "/apple-touch-icon.png" }, injectTo: "head" },
         {
           tag: "meta",
           // 開発サーバでは Service Worker を配らないので、キャッシュ名を持たない
@@ -106,8 +131,14 @@ export function appShell(): Plugin {
       ];
     },
 
-    // 開発サーバでは、マニフェストだけを返す。Service Worker は配らない
+    // 開発サーバでは、マニフェストとアイコンだけを返す。Service Worker は配らない
     configureServer(server) {
+      for (const icon of APP_ICONS) {
+        server.middlewares.use(`/${icon.fileName}`, (_req, res) => {
+          res.setHeader("Content-Type", "image/png");
+          res.end(appIconPng(icon.size));
+        });
+      }
       server.middlewares.use(`/${MANIFEST_FILE}`, (_req, res) => {
         res.setHeader("Content-Type", "application/manifest+json");
         res.end(webManifest(conferenceName));
@@ -120,6 +151,9 @@ export function appShell(): Plugin {
       this.emitFile({ type: "chunk", id: SW_ENTRY, fileName: SW_FILE });
       // generateBundle の中で加えたファイルは、その bundle に現れず、一覧から漏れる。ここで加える
       this.emitFile({ type: "asset", fileName: MANIFEST_FILE, source: webManifest(conferenceName) });
+      for (const icon of APP_ICONS) {
+        this.emitFile({ type: "asset", fileName: icon.fileName, source: appIconPng(icon.size) });
+      }
     },
 
     generateBundle: {

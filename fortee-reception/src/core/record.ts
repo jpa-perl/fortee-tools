@@ -9,7 +9,7 @@ import {
 } from "./fields.ts";
 
 // 記録（Design Doc 4.4、FR-39）。追記型のイベントで、削除も更新もしない（PRD 7.2）。
-// v1 以後は項目を足すことしかせず、値の集合と上限も変えない（Design Doc 9.6）。
+// 同じ環境で運用を始めた後は、項目を足すことしかせず、値の集合と上限も変えない（Design Doc 9.6）。
 // スキーマが確かめるのは形だけで、取り消しが指す ID の先が何であるかは確かめない。
 
 export const REASON_TEXT_MAX_LENGTH = 2000;
@@ -17,6 +17,22 @@ export const REASON_TEXT_MAX_LENGTH = 2000;
 export const TARGET_RECORD_IDS_MAX = 50;
 
 const name = z.string().check(z.maxLength(NAME_MAX_LENGTH));
+
+/**
+ * D1 に保存して読み戻すと変わる文字。対になっていないサロゲートは UTF-8 にできず、読み戻すと 1 つが
+ * 3 つの U+FFFD になる（ローカルの D1 で確かめた）。u フラグの下では、対になったサロゲートは 1 文字として
+ * 扱われるので、\p{Cs} は対になっていないものだけに当たる
+ */
+const UNSTORABLE = /\p{Cs}/u;
+const UNSTORABLE_ALL = /\p{Cs}/gu;
+
+/**
+ * 自由記述を、記録に持てる形にする。上限で切り、保存して読み戻すと変わる文字を除く。
+ * 上限で切った端がサロゲートの対を割ったときに残る片方が、これに当たる
+ */
+export function clampReasonText(text: string): string {
+  return text.slice(0, REASON_TEXT_MAX_LENGTH).replace(UNSTORABLE_ALL, "");
+}
 
 const commonFields = {
   /** 端末が生成する。再送の重複排除に使う */
@@ -56,7 +72,16 @@ const cancelFields = {
   route: z.null(),
   reasonKind: z.enum(["mistake", "wrong_person", "other"]),
   /** reasonKind が "other" のときの自由記述。それ以外は null */
-  reasonText: z.nullable(z.string().check(z.maxLength(REASON_TEXT_MAX_LENGTH))),
+  // 空の自由記述は通さない。「その他」は理由の入力が必須である（FR-29、画面設計書 S08-M1）。
+  // 保存して読み戻すと変わる文字も通さない。読み戻した値が長くなって 2,000 文字を超えると、
+  // その記録を受け取る全端末の同期と、書き出しが止まる
+  reasonText: z.nullable(
+    z.string().check(
+      z.minLength(1),
+      z.maxLength(REASON_TEXT_MAX_LENGTH),
+      z.refine((text) => !UNSTORABLE.test(text), "reasonText に、保存できない文字がある"),
+    ),
+  ),
   /** 打ち消すチェックインの記録 ID。重複させない */
   targetRecordIds: z.array(uuidSchema).check(
     z.minLength(1),

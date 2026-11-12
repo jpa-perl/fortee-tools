@@ -1,0 +1,133 @@
+# 画面のテスト（Playwright）で公開する設定。config/local.toml を写して、次の 1 つを足したもの。
+#
+# - どの受付も受け付けないイベント「テスト託児所」。対象外（FR-10）の結果を出すためのもの
+# - 受け付けるイベントが、チェックインするイベントより広い受付「ラウンジ受付」。チケットなし（FR-16）の結果を
+#   出すためのもの。期間は、ほかの受付と重ならない先の日にしてあり、テストは手動で切り替えて使う
+#
+# test/e2e/setup/prepare.ts が、開発の .wrangler/state とは別の場所（.wrangler/e2e/）のローカルの D1 と KV に、
+# この設定と、合成の ZIP（test/cli/synthetic-zip.ts と test/e2e/setup/data.ts）を公開する。
+# ビルドは config/local.toml を読む（カンファレンスの表示名は同じにしてある）
+
+[conference]
+slug = "yapc-tokyo-2026-sandbox"
+name = "YAPC::Tokyo 2026（ローカル）"
+timezone = "Asia/Tokyo"
+environment = "local"   # 公開先の環境名。CLI の --env と一致しなければ止まる
+
+[[events]]
+id = "00000000-0000-4000-8000-000000000001"   # 合成の値
+name = "テスト本編"
+key = "main"
+
+[[events]]
+id = "00000000-0000-4000-8000-000000000002"   # 合成の値
+name = "テスト前夜祭"
+key = "eve"
+
+[[events]]
+id = "00000000-0000-4000-8000-000000000003"   # 合成の値
+name = "テスト懇親会"
+key = "party"
+
+[[events]]
+id = "00000000-0000-4000-8000-000000000004"   # 合成の値
+name = "テスト託児所"
+key = "nursery"
+
+# 受付の期間は、開発のために広く取ってある。いつ開いても、本編受付が「期間中」になる。
+# 前夜祭受付は「終了」、懇親会受付は「これから」の受付で、手動の切り替えと提案（FR-8, 9）を試せる。
+# すべての受付のすべての期間は、互いに重複できない（FR-3）ので、3 つを同時に期間中にはできない
+
+[[receptions]]
+id = "eve"
+name = "前夜祭受付"
+periods = [{ start = 2025-11-27T17:30:00, end = 2025-11-27T21:00:00 }]
+accept = ["eve", "main"]
+require = ["eve"]
+checkin = ["eve", "main"]
+rejectMessage = "前夜祭チケットがありません。本編の受付は明日からです"
+
+[[receptions]]
+id = "main"
+name = "本編受付"
+periods = [{ start = 2026-01-01T00:00:00, end = 2030-01-01T00:00:00 }]
+accept = ["main"]
+require = ["main"]
+checkin = ["main"]
+rejectMessage = "本編チケットがありません"
+
+[[receptions]]
+id = "party"
+name = "懇親会受付"
+periods = [{ start = 2030-01-01T00:00:00, end = 2030-01-02T00:00:00 }]
+accept = ["party"]
+require = ["party"]
+checkin = ["party"]
+rejectMessage = "懇親会チケットがありません"
+
+[[receptions]]
+id = "lounge"
+name = "ラウンジ受付"
+periods = [{ start = 2031-01-01T00:00:00, end = 2031-01-02T00:00:00 }]
+accept = ["main", "party"]
+require = ["main"]
+checkin = ["party"]
+rejectMessage = "本編チケットがありません"
+
+[search]
+# columns の既定は ["ticketNo", "userName", "name"]（FR-1）
+[[search.answers]]
+event = "main"
+field = "お名前"            # fortee のフォーム項目名そのもの（CSV の列名）
+
+[[display.answers]]
+event = "main"
+field = "所属"
+key = "affiliation"
+
+[[display.answers]]
+event = "main"
+field = "懇親会参加"
+key = "party"
+
+[[display.ticketTypes]]
+event = "main"
+types = ["テスト本編一般チケット"]
+key = "general"
+
+[[display.ticketTypes]]
+event = "main"
+types = ["テスト本編スタッフチケット"]
+key = "staff"
+
+[template]
+reference = """
+{{user.userName}} さん{{#user.name}}（{{user.name}}）{{/user.name}}
+{{#reception}}
+受付: {{reception.name}}
+{{/reception}}
+{{#byEvent.main}}
+本編 {{ticketNo}} {{ticketType}}{{#done}}（済 {{doneAt}} {{doneReception}}）{{/done}}
+{{#typeIs.general}}
+  ネームカード: 一般
+{{/typeIs.general}}
+{{#typeIs.staff}}
+  ネームカード: スタッフ。スタッフ控室へ案内
+{{/typeIs.staff}}
+{{#answers.affiliation}}
+  所属: {{answers.affiliation}}
+{{/answers.affiliation}}
+{{#answers.party}}
+  懇親会: {{answers.party}}
+{{/answers.party}}
+{{/byEvent.main}}
+{{^byEvent.main}}
+本編チケットなし
+{{/byEvent.main}}
+{{#byEvent.eve}}
+前夜祭 {{ticketNo}}{{#done}}（済 {{doneAt}}）{{/done}}
+{{/byEvent.eve}}
+{{#byEvent.party}}
+懇親会 {{ticketNo}}{{#done}}（済 {{doneAt}}）{{/done}}
+{{/byEvent.party}}
+"""

@@ -1,0 +1,3 @@
+event,ticket_token,ticket_no,user_name,cancelled_at,cancelled_reception,cancelled_reception_name,cancelled_reason_kind,cancelled_reason_text,cancelled_operator_id,cancelled_operator_name,cancelled_device_id,cancelled_device_name
+main,3eedCck317dPGbwq19DZqkIfTadv6E0Z,A-5,test-carol,2026-11-28T09:32:00+09:00,main,本編受付,誤操作,,123456789012345678,受付 一郎,7f3c0000-0000-4000-8000-00000000000a,端末 HWY2
+,rkJm2h7vdSCgsTblXCc6WQKbfnO9vPkE,A-98,"test-gone, ""引用符""",2026-11-28T09:42:00+09:00,main,本編受付,誤操作,,123456789012345678,受付 一郎,7f3c0000-0000-4000-8000-00000000000a,端末 HWY2

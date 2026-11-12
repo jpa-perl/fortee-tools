@@ -16,6 +16,8 @@ export type Marks = {
   kv: string | null;
 };
 
+// wrangler は、1 つずつ順に呼ぶ。ローカルでは、並べて起動すると、模擬環境の SQLite のロックがぶつかって
+// 失敗することがある（database is locked）
 export async function readMarks(target: Target): Promise<Marks> {
   const hasMeta = await d1Execute(target, "SELECT 1 AS found FROM sqlite_master WHERE type = 'table' AND name = 'meta'");
   const d1 =
