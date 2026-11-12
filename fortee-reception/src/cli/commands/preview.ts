@@ -9,7 +9,8 @@ import { readSnapshot } from "../workdir.ts";
 // preview（Design Doc 8.1、8.7、FR-46）。作業ディレクトリのスナップショットと設定から、参加者を 1 人指定して、
 // 参考情報テンプレートを描画する。受付アプリの S04-M1 と同じ core の関数で文脈を作る（Design Doc 4.6）。
 // D1 と KV には触れない。CLI の手元には記録がないので、チケットの状態は --done で指定する。
-// 描画の結果は参加者の情報を含む。標準出力にだけ出す。
+// 描画の結果は HTML で、受付アプリが表示するものと同じ文字列である（変数の値はエスケープ済み）。
+// 参加者の情報を含む。標準出力にだけ出す。
 
 export type PreviewOptions = {
   /** イベントの key か id */
@@ -102,5 +103,5 @@ export async function preview(target: Target, config: ConfigBody, options: Previ
   if (!rendered.ok) {
     throw new CliError(`テンプレートを描画できません\n${rendered.errors.map((error) => `  ${error.message}`).join("\n")}`);
   }
-  deps.out(rendered.text);
+  deps.out(rendered.html);
 }

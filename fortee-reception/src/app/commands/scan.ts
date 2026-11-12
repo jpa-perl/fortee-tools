@@ -241,7 +241,7 @@ export function nextFromResult(): void {
 
 // ───────── S04-M1、S04-M2 ─────────
 
-/** S04 の「参考情報」。シートを開く。描画は views.ts の referenceText() */
+/** S04 の「参考情報」。シートを開く。描画は views.ts の referenceHtml() */
 export function openReference(): void {
   const current = screen.value;
   if (current.id !== "home" || current.mode.kind !== "result" || overlay.value !== null) return;

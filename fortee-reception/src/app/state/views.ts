@@ -266,9 +266,9 @@ export function resultView(): ResultView | null {
 
 /**
  * S04-M1 の参考情報。設定のテンプレートを、判定した時点の状態に今回済みにしたチケットを重ねて描画する
- * （Design Doc 4.6）。描画できなければ null（「表示できません」）
+ * （Design Doc 4.6）。結果は HTML で、変数の値はエスケープ済みである。描画できなければ null（「表示できません」）
  */
-export function referenceText(): string | null {
+export function referenceHtml(): string | null {
   const current = screen.value;
   const settings = config.value;
   if (current.id !== "home" || current.mode.kind !== "result" || settings === null) return null;
@@ -293,7 +293,7 @@ export function referenceText(): string | null {
     now: now.value,
   });
   const rendered = renderTemplate(settings.template.reference, context);
-  return rendered.ok ? rendered.text : null;
+  return rendered.ok ? rendered.html : null;
 }
 
 // ───────── S05 ─────────

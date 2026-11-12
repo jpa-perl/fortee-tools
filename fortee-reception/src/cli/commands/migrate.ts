@@ -4,7 +4,7 @@ import type { Target } from "../target.ts";
 import { applyMigrations, pendingMigrations, unknownAppliedMigrations } from "../wrangler.ts";
 
 // migrate（Design Doc 8.1）。D1 にマイグレーションを適用し、D1 と KV に環境の印がなければ書く。
-// 環境を作る手順（dev-setup 5 章）で、D1 と KV に最初に触れるコマンドである。
+// 環境を作る手順（production-setup 5.1）で、D1 と KV に最初に触れるコマンドである。
 // 運用を始めた後の環境では、足すマイグレーションが、端末に残る更新前の受付アプリと、
 // いまデプロイしてある Worker の動きを壊さないことを確かめてから実行する（Design Doc 9.6）。
 

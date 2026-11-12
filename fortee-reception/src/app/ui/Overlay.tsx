@@ -26,7 +26,7 @@ import {
   reasonTextOf,
   receptionChangePreview,
   receptionChoices,
-  referenceText,
+  referenceHtml,
   resultView,
   screen,
 } from "../state/index.ts";
@@ -50,7 +50,7 @@ const PULL_CLOSE_PX = 72;
 type Model =
   | { id: "S02-M1"; step: "list"; manual: boolean; choices: ReturnType<typeof receptionChoices> }
   | { id: "S02-M1"; step: "confirm"; reset: boolean; name: string | null; outOfPeriod: boolean }
-  | { id: "S04-M1"; text: string | null }
+  | { id: "S04-M1"; html: string | null }
   | { id: "S04-M2"; name: string; outOfPeriod: boolean }
   | { id: "S06-M1"; userName: string; ticketNos: string[]; receptionName: string }
   | { id: "S08-M1"; userName: string; receptionName: string | null; cancellable: OperationView["cancellable"] }
@@ -69,7 +69,7 @@ function currentModel(): Model | null {
       return { id: "S02-M1", step: "confirm", reset: sheet.step.change.kind === "reset", ...preview };
     }
     case "S04-M1":
-      return { id: "S04-M1", text: referenceText() };
+      return { id: "S04-M1", html: referenceHtml() };
     case "S04-M2": {
       const suggestion = resultView()?.suggestion;
       if (suggestion == null) return null;
@@ -335,8 +335,15 @@ function Reference({ model }: { model: Extract<Model, { id: "S04-M1" }> }) {
   return (
     <>
       <CloseButton />
-      {/* ただの文字列として出す。改行だけを保ち、記法としては解釈しない（画面設計書 S04-M1） */}
-      <p class="pb-4 wrap-anywhere whitespace-pre-wrap">{model.text ?? "表示できません"}</p>
+      {/*
+        描画結果を HTML として出す。空白と改行の扱いも HTML のとおりで、改行は表示に出ない（画面設計書 S04-M1）。
+        HTML はテンプレートに書いたものだけで、変数の値は描画のときにエスケープしてある（Design Doc 4.6）
+      */}
+      {model.html === null ? (
+        <p class="pb-4">表示できません</p>
+      ) : (
+        <div class="reference pb-4 wrap-anywhere" dangerouslySetInnerHTML={{ __html: model.html }} />
+      )}
     </>
   );
 }

@@ -90,34 +90,35 @@ event = "main"
 types = ["テスト本編スタッフチケット"]
 key = "staff"
 
+# 参考情報は HTML として表示される。改行は表示に出ないので、行の終わりに <br> を書く
 [template]
 reference = """
-{{user.userName}} さん{{#user.name}}（{{user.name}}）{{/user.name}}
+{{user.userName}} さん{{#user.name}}（{{user.name}}）{{/user.name}}<br>
 {{#reception}}
-受付: {{reception.name}}
+受付: {{reception.name}}<br>
 {{/reception}}
 {{#byEvent.main}}
-本編 {{ticketNo}} {{ticketType}}{{#done}}（済 {{doneAt}} {{doneReception}}）{{/done}}
+本編 {{ticketNo}} {{ticketType}}{{#done}}（済 {{doneAt}} {{doneReception}}）{{/done}}<br>
 {{#typeIs.general}}
-  ネームカード: 一般
+  ネームカード: 一般<br>
 {{/typeIs.general}}
 {{#typeIs.staff}}
-  ネームカード: スタッフ。スタッフ控室へ案内
+  ネームカード: スタッフ。スタッフ控室へ案内<br>
 {{/typeIs.staff}}
 {{#answers.affiliation}}
-  所属: {{answers.affiliation}}
+  所属: {{answers.affiliation}}<br>
 {{/answers.affiliation}}
 {{#answers.party}}
-  懇親会: {{answers.party}}
+  懇親会: {{answers.party}}<br>
 {{/answers.party}}
 {{/byEvent.main}}
 {{^byEvent.main}}
-本編チケットなし
+本編チケットなし<br>
 {{/byEvent.main}}
 {{#byEvent.eve}}
-前夜祭 {{ticketNo}}{{#done}}（済 {{doneAt}}）{{/done}}
+前夜祭 {{ticketNo}}{{#done}}（済 {{doneAt}}）{{/done}}<br>
 {{/byEvent.eve}}
 {{#byEvent.party}}
-懇親会 {{ticketNo}}{{#done}}（済 {{doneAt}}）{{/done}}
+懇親会 {{ticketNo}}{{#done}}（済 {{doneAt}}）{{/done}}<br>
 {{/byEvent.party}}
 """

@@ -29,7 +29,7 @@
   // Workers Logs（Design Doc 7.6、バックエンド 8.1）
   "observability": { "enabled": true },
 
-  // カンファレンスの環境は、環境名（fortee のスラッグ）ごとにここへ足す（dev-setup 5 章の 4）。
+  // カンファレンスの環境は、環境名（fortee のスラッグ）ごとにここへ足す（production-setup 3.4）。
   // d1_databases と kv_namespaces は最上位から引き継がれないので、環境ごとに書く。
   //
   // "yapc-tokyo-2026": {

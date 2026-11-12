@@ -119,13 +119,13 @@ npm run cli -- <コマンド> --env <環境名>
 | `validate` | — | 設定ファイルを検証し、誤りをすべて列挙する |
 | `import` | `--event <key か id> --zip <ZIP>` | fortee のダウンロード ZIP を、イベント単位でスナップショットに変換する |
 | `publish` | — | 設定と全イベントのスナップショットを公開する |
-| `preview` | `--event <key か id> --ticket <番号>` | 参考情報テンプレートを、指定した参加者で描画する |
+| `preview` | `--event <key か id> --ticket <番号>` | 参考情報テンプレートを、指定した参加者で描画し、結果の HTML を出す |
 | `export` | `--out <まだないディレクトリ> [--chunk <行数>]` | 記録を集約し、一括チェックイン CSV と確認用の一覧を書き出す |
 | `restore-records` | `--from <records.json>` | DB を以前の時点に戻した後の復旧で、書き出しの `records.json` から、D1 にない記録を戻す |
 | `bump-generation` | — | DB を以前の時点に戻した後の復旧で、DB の世代を変え、端末に記録を送り直させる |
 | `deploy` | — | ビルドして、その環境にデプロイする |
 
-受付の準備から fortee への反映までの運用の流れは PRD の 9 章に、カンファレンスの環境の作成、秘密の設定、デプロイ、保持期間の後の削除は手順書の 5 章以降にある。
+受付の準備から fortee への反映までの運用の流れは PRD の 9 章に、カンファレンスの環境の作成、秘密の設定、最初のデプロイは[本番環境構築手順書](docs/production-setup.md)に、運用の開始、その後のデプロイ、保持期間の後の削除は手順書の 6 章以降にある。
 
 ## 文書
 
@@ -134,5 +134,6 @@ npm run cli -- <コマンド> --env <環境名>
 | [docs/prd.md](docs/prd.md) | 要件（機能要件、非機能要件、データ要件、運用手順、受け入れ基準） |
 | [docs/screen-design.md](docs/screen-design.md) | 受付アプリの画面、要素、状態、文言 |
 | [docs/design-doc.md](docs/design-doc.md) | 構成、層のあいだで共有する契約、各層の内部構成、版と互換性、テストの方針 |
-| [docs/dev-setup.md](docs/dev-setup.md) | 開発とデプロイのコマンドの手順 |
+| [docs/dev-setup.md](docs/dev-setup.md) | 開発、運用の開始、デプロイ、削除のコマンドの手順 |
+| [docs/production-setup.md](docs/production-setup.md) | カンファレンスの環境（本番環境）を作る手順 |
 | [docs/research/](docs/research/) | fortee の仕様、バックエンドとフロントエンドの選定、端末の挙動の調査 |

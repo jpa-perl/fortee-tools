@@ -104,10 +104,12 @@ test("読み取りから結果: 成功、直後の読み直しの無視、済み
   await expectNoA11yViolations(page);
   await shot(page, testInfo, "s04-success");
 
-  // 参考情報のシート。テンプレートの描画結果を、文字列として出す
+  // 参考情報のシート。テンプレートの描画結果を、HTML として出す
   await page.getByRole("button", { name: "参考情報" }).click();
   await expect(sheet(page)).toContainText("test-carol さん");
   await expect(sheet(page)).toContainText("受付: 本編受付");
+  // テンプレートに書いたタグは、要素になる
+  await expect(sheet(page).locator("b")).toHaveText("本編受付");
   await expect(sheet(page)).toContainText("本編 A-5 テスト本編一般チケット（済");
   await settle(page);
   await expectNoA11yViolations(page);

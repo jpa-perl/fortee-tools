@@ -24,7 +24,8 @@ async function run(options: PreviewOptions, useConfig: ConfigBody = config): Pro
   let text = "";
   const warnings: string[] = [];
   await preview(environment.target, useConfig, options, { now: () => NOW, out: (rendered) => (text += rendered), warn: (line) => warnings.push(line) });
-  return { text, warnings };
+  // config/local.toml のテンプレートは、行の終わりに <br> を書く。期待値を読みやすくするために、除いて比べる
+  return { text: text.replaceAll("<br>\n", "\n"), warnings };
 }
 
 describe("preview", () => {
@@ -77,10 +78,16 @@ describe("preview", () => {
     );
   });
 
-  it("描画の結果は、エスケープせず、値をそのまま出す", async () => {
+  it("テンプレートに書いたタグは、そのまま出す", async () => {
+    let raw = "";
+    await preview(environment.target, config, { event: "eve", ticket: "M-4" }, { now: () => NOW, out: (rendered) => (raw += rendered), warn: () => {} });
+    expect(raw).toBe("test-grace さん（グレース）<br>\n本編チケットなし<br>\n前夜祭 M-4<br>\n");
+  });
+
+  it("描画の結果は HTML で、値はエスケープして出す", async () => {
     const { text } = await run({ event: "main", ticket: "A-6" });
     expect(text).toContain('test-dave さん（デイブ）\n');
-    expect(text).toContain('  所属: "引用符" と, カンマ\nと改行の株式会社\n');
+    expect(text).toContain("  所属: &quot;引用符&quot; と, カンマ\nと改行の株式会社\n");
   });
 
   it("本編のチケットを持たない参加者", async () => {
