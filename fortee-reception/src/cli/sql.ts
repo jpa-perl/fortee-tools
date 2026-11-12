@@ -10,3 +10,11 @@ export function jsonParam(value: unknown): string {
   const hex = Buffer.from(JSON.stringify(value), "utf8").toString("hex");
   return `CAST(x'${hex}' AS TEXT)`;
 }
+
+/**
+ * 文字列を、そのままの値で SQL の式（文字列）にする。JSON に包まないので、文の中でそのまま比べたり入れたりできる。
+ * 公開の版（meta.versions）のように、控えた文字列と 1 文字も違わない値を渡すときに使う（Design Doc 8.4）
+ */
+export function textParam(value: string): string {
+  return `CAST(x'${Buffer.from(value, "utf8").toString("hex")}' AS TEXT)`;
+}

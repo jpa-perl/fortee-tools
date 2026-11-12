@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkinRecordSchema, serverRecordSchema } from "../../src/core/record.ts";
+import { checkinRecordSchema, clampReasonText, serverRecordSchema } from "../../src/core/record.ts";
 
 const checkin = {
   recordId: "9f1c2a3b-4d5e-4f60-8a7b-0c1d2e3f4a5b",
@@ -59,6 +59,7 @@ describe("記録のスキーマ（Design Doc 4.4）", () => {
     ["知らない操作", { ...checkin, op: "undo" }],
     ["知らない理由の区分", { ...cancel, reasonKind: "typo" }],
     ["その他なのに自由記述がない", { ...cancel, reasonKind: "other", reasonText: null }],
+    ["その他なのに自由記述が空（FR-29）", { ...cancel, reasonKind: "other", reasonText: "" }],
     ["その他でないのに自由記述がある", { ...cancel, reasonKind: "mistake", reasonText: "x" }],
     ["記録 ID が UUID の形でない", { ...checkin, recordId: "not-a-uuid" }],
     ["記録 ID が大文字", { ...checkin, recordId: checkin.recordId.toUpperCase() }],
@@ -77,6 +78,27 @@ describe("記録のスキーマ（Design Doc 4.4）", () => {
 
   it("その他の取り消しは自由記述を持つ", () => {
     expect(ok({ ...cancel, reasonKind: "other", reasonText: "二重に読み取った" })).toBe(true);
+  });
+
+  it("保存して読み戻すと変わる文字を持つ自由記述を拒む", () => {
+    const other = { ...cancel, reasonKind: "other" };
+    expect(ok({ ...other, reasonText: "abc\ud83c" })).toBe(false);
+    expect(ok({ ...other, reasonText: "\udfab abc" })).toBe(false);
+    // 対になったサロゲート（絵文字）と、制御文字は通す
+    expect(ok({ ...other, reasonText: "🎫 を\n読み直した\t\u0000" })).toBe(true);
+  });
+
+  it("入力された自由記述を、記録に持てる形にする", () => {
+    expect(clampReasonText("二重に読み取った")).toBe("二重に読み取った");
+    expect(clampReasonText("ab\ud83cc")).toBe("abc");
+    expect(clampReasonText("r".repeat(2001))).toBe("r".repeat(2000));
+    // 上限が絵文字の対を割るときは、残る片方を除く
+    const split = clampReasonText(`${"r".repeat(1999)}🎫`);
+    expect(split).toBe("r".repeat(1999));
+    expect(clampReasonText(`${"r".repeat(1998)}🎫`)).toBe(`${"r".repeat(1998)}🎫`);
+    expect(ok({ ...cancel, reasonKind: "other", reasonText: split })).toBe(true);
+    // 除いた結果が空になれば、記録にできない
+    expect(clampReasonText("\ud83c")).toBe("");
   });
 
   it("上限ちょうどは通し、超えると拒む（Design Doc 7.3）", () => {

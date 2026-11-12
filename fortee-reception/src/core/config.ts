@@ -6,7 +6,8 @@ import { DISTRIBUTION_FORMAT } from "./versions.ts";
 //
 // 設定ファイル（TOML）を読むのは CLI だけで、CLI が検証して JSON に変換し、公開する。
 // ここに置くのは、公開する設定の形と、設定ファイルの [conference] の形である。
-// 設定ファイル全体の形と検証（Design Doc 4.2 の検証の表）は、CLI の validate とともに足す。
+// 設定ファイル全体の形と検証（Design Doc 4.2 の検証の表）、公開する JSON への変換は config-file.ts にある。
+// 受付アプリは config-file.ts を読まない（検証の文言とテンプレートの名前の検証を、殻に含めないため）。
 
 /** 設定ファイルの [conference]。公開する設定でも同じ形 */
 export const conferenceSchema = z.object({
@@ -34,12 +35,14 @@ const eventSchema = z.object({
   /** テンプレートと設定の中でイベントを指す短い名前。省略すると id で指す */
   key: z.optional(identifierSchema),
 });
+export type ConfigEvent = z.infer<typeof eventSchema>;
 
 /** 期間。開始を含み、終了を含まない（FR-3） */
 const periodSchema = z.object({
   start: epochMsSchema,
   end: epochMsSchema,
 });
+export type Period = z.infer<typeof periodSchema>;
 
 // 公開する設定では、イベントの参照（accept など）は id に解決済みである
 
@@ -66,6 +69,7 @@ const answerRefSchema = z.object({
   /** テンプレートから参照する名前。省略すると field で参照する */
   key: z.optional(z.string()),
 });
+export type AnswerRef = z.infer<typeof answerRefSchema>;
 
 const ticketTypeGroupSchema = z.object({
   event: eventIdSchema,
@@ -74,6 +78,11 @@ const ticketTypeGroupSchema = z.object({
   /** テンプレートから typeIs.{key} で参照する名前 */
   key: z.string(),
 });
+export type TicketTypeGroup = z.infer<typeof ticketTypeGroupSchema>;
+
+/** 検索対象にできるスナップショットの項目（FR-1） */
+export const SEARCH_COLUMNS = ["ticketNo", "userName", "name"] as const;
+export type SearchColumn = (typeof SEARCH_COLUMNS)[number];
 
 /** 公開する設定。受付アプリはこの JSON だけを読み、Worker は中身を解釈せずに配る */
 export const publishedConfigSchema = z.object({
@@ -86,7 +95,7 @@ export const publishedConfigSchema = z.object({
   receptions: z.array(receptionSchema),
   search: z.object({
     /** 検索対象にするスナップショットの項目。既定の値を埋めて公開する */
-    columns: z.array(z.enum(["ticketNo", "userName", "name"])),
+    columns: z.array(z.enum(SEARCH_COLUMNS)),
     answers: z.array(answerRefSchema),
   }),
   display: z.object({
@@ -99,3 +108,23 @@ export const publishedConfigSchema = z.object({
   }),
 });
 export type PublishedConfig = z.infer<typeof publishedConfigSchema>;
+
+/** テンプレートと設定の中でイベントを指す名前。key があれば key、なければ id（FR-1、Design Doc 4.6） */
+export function eventKeyOf(event: Pick<ConfigEvent, "id" | "key">): string {
+  return event.key ?? event.id;
+}
+
+/**
+ * イベントの参照（key か id）を、イベント ID に解決する（Design Doc 4.2）。key を先に見る。
+ * どのイベントも指さなければ null。key がほかのイベントの id と重ならないことは、設定検証で確かめてある
+ */
+export function resolveEventRef(events: readonly Pick<ConfigEvent, "id" | "key">[], ref: string): string | null {
+  const byKey = events.find((event) => event.key === ref);
+  if (byKey !== undefined) return byKey.id;
+  return events.find((event) => event.id === ref)?.id ?? null;
+}
+
+/** アンケートの項目をテンプレートから参照する名前。key があれば key、なければ field（Design Doc 4.2） */
+export function answerKeyOf(answer: Pick<AnswerRef, "field" | "key">): string {
+  return answer.key ?? answer.field;
+}

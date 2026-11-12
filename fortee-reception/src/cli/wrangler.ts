@@ -32,8 +32,9 @@ const WRANGLER_BIN = join(dirname(require.resolve("wrangler/package.json")), "bi
  * ローカルのときだけ、--env= で最上位の設定を選び、--remote の代わりに --local を付ける
  */
 function scopeArgs(target: Target): string[] {
-  if (!target.local) return ["--env", target.env, "--remote"];
-  return ["--env=", "--local", ...(target.persistTo === undefined ? [] : ["--persist-to", target.persistTo])];
+  const config = target.wranglerConfig === undefined ? [] : ["--config", target.wranglerConfig];
+  if (!target.local) return [...config, "--env", target.env, "--remote"];
+  return [...config, "--env=", "--local", ...(target.persistTo === undefined ? [] : ["--persist-to", target.persistTo])];
 }
 
 const childEnv = (): NodeJS.ProcessEnv => ({ ...process.env, WRANGLER_SEND_METRICS: "false" });
@@ -82,18 +83,24 @@ export async function d1Execute<Row = Record<string, unknown>>(target: Target, s
   return last.results;
 }
 
-/** wrangler の標準出力から、JSON の配列を取り出す。配列の前に、wrangler の知らせが出ていることがある */
-function parseJsonOutput<T>(stdout: string, what: string): T {
-  try {
-    return JSON.parse(stdout.slice(stdout.indexOf("["))) as T;
-  } catch {
-    throw new CliError(`wrangler ${what} の出力を JSON として読めません`);
+/**
+ * wrangler の標準出力から、JSON の配列を取り出す。配列の前に、wrangler の知らせが出ていることがある。
+ * 知らせにも「[」が現れうるので、行の先頭の「[」を前から順に試し、最初に JSON として読めたところを使う
+ */
+export function parseJsonOutput<T>(stdout: string, what: string): T {
+  for (const match of stdout.matchAll(/^\[/gm)) {
+    try {
+      return JSON.parse(stdout.slice(match.index)) as T;
+    } catch {
+      // 知らせの行だった。次の候補を試す
+    }
   }
+  throw new CliError(`wrangler ${what} の出力を JSON として読めません`);
 }
 
 /** migrations/ にあるマイグレーションのファイル名。適用する順 */
-export async function localMigrations(): Promise<string[]> {
-  const names = await readdir(MIGRATIONS_DIR);
+export async function localMigrations(target?: Pick<Target, "migrationsDir">): Promise<string[]> {
+  const names = await readdir(target?.migrationsDir ?? MIGRATIONS_DIR);
   return names.filter((name) => name.endsWith(".sql")).sort();
 }
 
@@ -102,16 +109,27 @@ export async function localMigrations(): Promise<string[]> {
  * 適用済みかは、wrangler と同じくファイル名で決める
  */
 export async function pendingMigrations(target: Target): Promise<string[]> {
+  const applied = new Set(await appliedMigrations(target));
+  return (await localMigrations(target)).filter((name) => !applied.has(name));
+}
+
+/** D1 に適用済みのマイグレーションのファイル名。適用した順 */
+async function appliedMigrations(target: Target): Promise<string[]> {
   const hasTable = await d1Execute(
     target,
     "SELECT 1 AS found FROM sqlite_master WHERE type = 'table' AND name = 'd1_migrations'",
   );
-  const applied = new Set(
-    hasTable.length === 0
-      ? []
-      : (await d1Execute<{ name: string }>(target, "SELECT name FROM d1_migrations")).map((row) => row.name),
-  );
-  return (await localMigrations()).filter((name) => !applied.has(name));
+  if (hasTable.length === 0) return [];
+  return (await d1Execute<{ name: string }>(target, "SELECT name FROM d1_migrations ORDER BY id")).map((row) => row.name);
+}
+
+/**
+ * D1 に適用済みのマイグレーションのうち、CLI が持たないもの。あれば、その D1 は、既存のマイグレーションの
+ * ファイルを書き換えるか改名する前の版で作られている（Design Doc 9.6）
+ */
+export async function unknownAppliedMigrations(target: Target): Promise<string[]> {
+  const local = new Set(await localMigrations(target));
+  return (await appliedMigrations(target)).filter((name) => !local.has(name));
 }
 
 /**
@@ -147,4 +165,43 @@ export async function kvPut(target: Target, key: string, value: string): Promise
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+}
+
+/** KV の鍵のうち、名前が prefix で始まるものの一覧 */
+export async function kvList(target: Target, prefix: string): Promise<string[]> {
+  const listed = await run(["kv", "key", "list", "--binding", KV_BINDING, ...scopeArgs(target), "--prefix", prefix]);
+  return parseJsonOutput<{ name: string }[]>(listed, "kv key list").map((entry) => entry.name);
+}
+
+/** KV の鍵を消す */
+export async function kvDelete(target: Target, key: string): Promise<void> {
+  await run(["kv", "key", "delete", key, "--binding", KV_BINDING, ...scopeArgs(target)]);
+}
+
+/**
+ * D1 で、文を並べたファイルを実行する（wrangler d1 execute --file）。文の多い restore-records だけが使う（Design Doc 8.2）。
+ * リモートの --file は import の経路を通り、処理の間 DB が要求を受け付けなくなる。wrangler がその確認を求めるので、
+ * リモートでは端末につないで、管理者が答える。ローカルでは端末につながない
+ */
+export async function d1ExecuteFile(target: Target, sql: string): Promise<void> {
+  const dir = await mkdtemp(join(tmpdir(), "checkin-sql-"));
+  try {
+    const path = join(dir, "statements.sql");
+    await writeFile(path, sql, "utf8");
+    const args = ["d1", "execute", D1_BINDING, ...scopeArgs(target), "--file", path];
+    if (target.local) await run(args);
+    else await runInteractive(args);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * ビルドの出力をデプロイする（wrangler deploy）。deploy だけが使う（Design Doc 8.1）。
+ * ビルド（vite build）が、その環境に向けた wrangler の設定を出力し、wrangler はそれを読む。
+ * --env がビルドの環境と違えば、wrangler が止まる。デプロイの記録に、リリース名を残す
+ */
+export async function deployWorker(target: Target, release: string): Promise<void> {
+  if (target.local) throw new CliError("ローカルの開発の環境（local）には、デプロイしません");
+  await runInteractive(["deploy", "--env", target.env, "--message", release]);
 }

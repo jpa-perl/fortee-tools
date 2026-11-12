@@ -22,6 +22,13 @@ export type Target = {
   workDir: string;
   /** ローカルのデータの保存先。テストが一時ディレクトリに向けるためのもので、ふだんは指定しない */
   persistTo?: string;
+  /**
+   * wrangler の設定ファイルと、マイグレーションのディレクトリ。テストが、マイグレーションを足した
+   * 写しに向けるためのもので、ふだんは指定しない（パッケージの wrangler.jsonc と migrations/ を使う）。
+   * 指定するときは、設定ファイルの migrations_dir と同じディレクトリを migrationsDir に渡す
+   */
+  wranglerConfig?: string;
+  migrationsDir?: string;
 };
 
 export function resolveTarget(options: { env: string | undefined; config?: string | undefined; persistTo?: string }): Target {

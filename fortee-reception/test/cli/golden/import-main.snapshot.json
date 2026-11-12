@@ -1,0 +1,110 @@
+{
+  "format": 0,
+  "eventId": "00000000-0000-4000-8000-000000000001",
+  "version": 1794452400000,
+  "columns": [
+    "お名前",
+    "所属",
+    "懇親会参加"
+  ],
+  "attendees": [
+    {
+      "ticketToken": "wvb02bx6JWNXUis0YdfJbZ9Ukg2TSN7t",
+      "ticketNo": "A-1",
+      "ticketType": "テスト本編一般チケット",
+      "userName": "test-alice",
+      "name": "",
+      "profileUrlToken": "DDLOZl11Z5hRxNvGAGVfTby7L0nON4gz",
+      "forteeCheckedIn": false,
+      "answers": {
+        "お名前": "テスト 太郎",
+        "所属": "テスト株式会社",
+        "懇親会参加": "参加する"
+      }
+    },
+    {
+      "ticketToken": "9jBykZwJ0N62J5Xln0vkw05xLdi98e3u",
+      "ticketNo": "A-2",
+      "ticketType": "テスト本編一般チケット",
+      "userName": "test-alice",
+      "name": "",
+      "profileUrlToken": "o94dwatnnOCD21npskrFdVhDtoAFfrv0",
+      "forteeCheckedIn": false,
+      "answers": {
+        "お名前": "テスト 花子",
+        "所属": "",
+        "懇親会参加": "参加しない"
+      }
+    },
+    {
+      "ticketToken": "nb6nabHYZpxSbu5lP9EEtB198UWeZxWv",
+      "ticketNo": "A-4",
+      "ticketType": "テスト本編一般チケット",
+      "userName": "test-bob",
+      "name": "",
+      "profileUrlToken": "F7k4TJYADDoKxGkqWFU3jFSmRgJQWEtk",
+      "forteeCheckedIn": true,
+      "answers": {
+        "お名前": "試験 次郎",
+        "所属": "サンプル合同会社",
+        "懇親会参加": "参加する"
+      }
+    },
+    {
+      "ticketToken": "3eedCck317dPGbwq19DZqkIfTadv6E0Z",
+      "ticketNo": "A-5",
+      "ticketType": "テスト本編一般チケット",
+      "userName": "test-carol",
+      "name": "",
+      "profileUrlToken": "qWcU0GWpi5pCMLlii0Q9Ov2AxRJfIQ5f",
+      "forteeCheckedIn": false,
+      "answers": {
+        "お名前": "見本 三郎",
+        "所属": "",
+        "懇親会参加": "参加する"
+      }
+    },
+    {
+      "ticketToken": "Dvn66r74p97n0A0X71r9AoCLEHD4nCL5",
+      "ticketNo": "A-6",
+      "ticketType": "テスト本編一般チケット",
+      "userName": "test-dave",
+      "name": "デイブ",
+      "profileUrlToken": "mRTD7spmnfPwP1gAuIIDFkYF4kk4sTtU",
+      "forteeCheckedIn": false,
+      "answers": {
+        "お名前": "例示 四郎",
+        "所属": "\"引用符\" と, カンマ\nと改行の株式会社",
+        "懇親会参加": ""
+      }
+    },
+    {
+      "ticketToken": "izu14Mwfprd5lJiQOolJMG5NOmt6GpQH",
+      "ticketNo": "A-12",
+      "ticketType": "テスト本編一般チケット",
+      "userName": "test-frank",
+      "name": "",
+      "profileUrlToken": "vwyNhu62U3YyMYAJzR62ZPiV9PkX89zV",
+      "forteeCheckedIn": false,
+      "answers": {
+        "お名前": "ＦＲＡＮＫ　全角",
+        "所属": " 前後に空白 ",
+        "懇親会参加": "参加しない"
+      }
+    },
+    {
+      "ticketToken": "mWkVQI7cGO93dIuBt5UbQKTSl2Q0JD57",
+      "ticketNo": "Z-1",
+      "ticketType": "テスト本編スタッフチケット",
+      "userName": "test-erin",
+      "name": "",
+      "profileUrlToken": "X044NaytmnRHF3AAACCicdqzWT4bgqw1",
+      "forteeCheckedIn": false,
+      "answers": {
+        "お名前": "係 五郎",
+        "所属": "実行委員会",
+        "懇親会参加": ""
+      }
+    }
+  ]
+}

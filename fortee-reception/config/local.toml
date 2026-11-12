@@ -1,11 +1,123 @@
 # ローカルの開発の設定（dev-setup 4.3）。どのカンファレンスの環境とも接続しない（Design Doc 3.6）。
-# 取り込む ZIP には fortee の Sandbox のものを使うので、スラッグは Sandbox のカンファレンスにする。
+# スラッグは、fortee の Sandbox のカンファレンスにする。
 #
-# いま読まれるのは [conference] だけである。イベント、受付、検索と表示の列、テンプレートは、
-# 設定の検証（validate）と取り込み（import）を実装するときに、Design Doc 4.2 の形で足す。
+# イベントとチケット種別、アンケートの項目は、test/cli/synthetic-zip.ts が作る合成の ZIP に合わせてある。
+# 合成の ZIP は、docs/research/fortee/ の記述から作ったもので、Sandbox からダウンロードした ZIP ではない。
+# イベント ID も合成の値で、Sandbox の本物のイベント ID ではない。ZIP を作って公開するまでの手順:
+#
+#   npm run cli -- migrate --env local
+#   node test/cli/make-synthetic-zips.ts            （.work/local/synthetic-zips/ に、イベントごとの ZIP を作る）
+#   npm run cli -- import --env local --event main  --zip .work/local/synthetic-zips/main.zip
+#   npm run cli -- import --env local --event eve   --zip .work/local/synthetic-zips/eve.zip
+#   npm run cli -- import --env local --event party --zip .work/local/synthetic-zips/party.zip
+#   npm run cli -- publish --env local
 
 [conference]
 slug = "yapc-tokyo-2026-sandbox"
 name = "YAPC::Tokyo 2026（ローカル）"
 timezone = "Asia/Tokyo"
 environment = "local"   # 公開先の環境名。CLI の --env と一致しなければ止まる
+
+[[events]]
+id = "00000000-0000-4000-8000-000000000001"   # 合成の値
+name = "テスト本編"
+key = "main"
+
+[[events]]
+id = "00000000-0000-4000-8000-000000000002"   # 合成の値
+name = "テスト前夜祭"
+key = "eve"
+
+[[events]]
+id = "00000000-0000-4000-8000-000000000003"   # 合成の値
+name = "テスト懇親会"
+key = "party"
+
+# 受付の期間は、開発のために広く取ってある。いつ開いても、本編受付が「期間中」になる。
+# 前夜祭受付は「終了」、懇親会受付は「これから」の受付で、手動の切り替えと提案（FR-8, 9）を試せる。
+# すべての受付のすべての期間は、互いに重複できない（FR-3）ので、3 つを同時に期間中にはできない
+
+[[receptions]]
+id = "eve"
+name = "前夜祭受付"
+periods = [{ start = 2025-11-27T17:30:00, end = 2025-11-27T21:00:00 }]
+accept = ["eve", "main"]
+require = ["eve"]
+checkin = ["eve", "main"]
+rejectMessage = "前夜祭チケットがありません。本編の受付は明日からです"
+
+[[receptions]]
+id = "main"
+name = "本編受付"
+periods = [{ start = 2026-01-01T00:00:00, end = 2030-01-01T00:00:00 }]
+accept = ["main"]
+require = ["main"]
+checkin = ["main"]
+rejectMessage = "本編チケットがありません"
+
+[[receptions]]
+id = "party"
+name = "懇親会受付"
+periods = [{ start = 2030-01-01T00:00:00, end = 2030-01-02T00:00:00 }]
+accept = ["party"]
+require = ["party"]
+checkin = ["party"]
+rejectMessage = "懇親会チケットがありません"
+
+[search]
+# columns の既定は ["ticketNo", "userName", "name"]（FR-1）
+[[search.answers]]
+event = "main"
+field = "お名前"            # fortee のフォーム項目名そのもの（CSV の列名）
+
+[[display.answers]]
+event = "main"
+field = "所属"
+key = "affiliation"
+
+[[display.answers]]
+event = "main"
+field = "懇親会参加"
+key = "party"
+
+[[display.ticketTypes]]
+event = "main"
+types = ["テスト本編一般チケット"]
+key = "general"
+
+[[display.ticketTypes]]
+event = "main"
+types = ["テスト本編スタッフチケット"]
+key = "staff"
+
+[template]
+reference = """
+{{user.userName}} さん{{#user.name}}（{{user.name}}）{{/user.name}}
+{{#reception}}
+受付: {{reception.name}}
+{{/reception}}
+{{#byEvent.main}}
+本編 {{ticketNo}} {{ticketType}}{{#done}}（済 {{doneAt}} {{doneReception}}）{{/done}}
+{{#typeIs.general}}
+  ネームカード: 一般
+{{/typeIs.general}}
+{{#typeIs.staff}}
+  ネームカード: スタッフ。スタッフ控室へ案内
+{{/typeIs.staff}}
+{{#answers.affiliation}}
+  所属: {{answers.affiliation}}
+{{/answers.affiliation}}
+{{#answers.party}}
+  懇親会: {{answers.party}}
+{{/answers.party}}
+{{/byEvent.main}}
+{{^byEvent.main}}
+本編チケットなし
+{{/byEvent.main}}
+{{#byEvent.eve}}
+前夜祭 {{ticketNo}}{{#done}}（済 {{doneAt}}）{{/done}}
+{{/byEvent.eve}}
+{{#byEvent.party}}
+懇親会 {{ticketNo}}{{#done}}（済 {{doneAt}}）{{/done}}
+{{/byEvent.party}}
+"""

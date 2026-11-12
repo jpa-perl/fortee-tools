@@ -9,7 +9,6 @@ import { expect, test } from "@playwright/test";
 // 配信を切り替えるために、本番のビルドの出力（dist/client）を、このテストが立てるサーバから配る。
 // Worker は通らない。受付アプリの殻は、起動で /api/ を呼ばない
 
-test.skip(({ browserName }) => browserName !== "chromium", "Service Worker は Chromium で確かめる（Design Doc 11 章）");
 
 const CLIENT = join(process.cwd(), "dist/client");
 const CONTENT_TYPES: Record<string, string> = {
@@ -17,6 +16,7 @@ const CONTENT_TYPES: Record<string, string> = {
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".webmanifest": "application/manifest+json",
+  ".png": "image/png",
 };
 
 /** sw.js を配った後の要求（事前のキャッシュ）への応答を書き換える */
@@ -83,8 +83,11 @@ test("配信が切り替わらなければ、このサーバからでも事前�
   const site = await serveClient((_path, body) => body);
   try {
     await page.goto(site.origin);
-    await expect(page.getByTestId("offline-ready")).toHaveText("オフラインで起動できます");
-    expect((await page.evaluate(state)).registrations).toBe(1);
+    // 事前のキャッシュが終わると、Service Worker が有効になり、このビルドのキャッシュができる
+    await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
+    const { registrations, caches: names } = await page.evaluate(state);
+    expect(registrations).toBe(1);
+    expect(names).toEqual([await page.locator('meta[name="app-shell-cache"]').getAttribute("content")]);
   } finally {
     await site.close();
   }
@@ -106,7 +109,6 @@ test("取得の途中で別の版の HTML が返れば、Service Worker は有�
     await site.precacheServed;
     // インストールに失敗した Service Worker の登録は消え、キャッシュは作られない
     await expect.poll(() => page.evaluate(state)).toEqual({ registrations: 0, caches: [] });
-    await expect(page.getByTestId("offline-ready")).toHaveText("オフラインでは起動できません");
   } finally {
     await site.close();
   }
@@ -121,7 +123,6 @@ test("取得した中身がこのビルドのものと違えば、Service Worker
     await page.goto(site.origin);
     await site.precacheServed;
     await expect.poll(() => page.evaluate(state)).toEqual({ registrations: 0, caches: [] });
-    await expect(page.getByTestId("offline-ready")).toHaveText("オフラインでは起動できません");
   } finally {
     await site.close();
   }

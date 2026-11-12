@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { createMiddleware } from "hono/factory";
-import type { Env } from "./env.ts";
+import type { AppEnv } from "./env.ts";
 import { errorResponse } from "./errors.ts";
 
 // セッション（Design Doc 7.2）。サーバに状態を持たない署名付き Cookie。
@@ -13,8 +13,10 @@ import { errorResponse } from "./errors.ts";
  * このオリジンに届く同じ名前の Cookie を置くことができない
  */
 export const SESSION_COOKIE = "__Host-session";
-/** セッションの期限。同期のたびに延ばす（延長は同期のルートとともに足す） */
+/** セッションの期限。同期のたびに延ばす */
 export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** 期限までの残りがこれを切っていれば、同期の応答で発行し直す。端末 1 台につき 1 日に 1 回ほどになる */
+export const SESSION_RENEW_BELOW_MS = 6 * 24 * 60 * 60 * 1000;
 
 export type Session = {
   /** Discord のユーザ ID */
@@ -25,12 +27,13 @@ export type Session = {
   exp: number;
 };
 
-export type SessionEnv = { Bindings: Env; Variables: { session: Session } };
+export type SessionEnv = { Bindings: AppEnv["Bindings"]; Variables: AppEnv["Variables"] & { session: Session } };
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-function toBase64Url(bytes: Uint8Array): string {
+/** バイト列を、詰め物のない base64url にする。セッションの値と、ログインの途中の乱数と code_challenge に使う */
+export function toBase64Url(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
@@ -96,6 +99,18 @@ export function setSessionCookie(c: Context, token: string): void {
 
 export function clearSessionCookie(c: Context): void {
   deleteCookie(c, SESSION_COOKIE, { httpOnly: true, secure: true, sameSite: "Lax", path: "/" });
+}
+
+/**
+ * 期限までの残りが短ければ、sub と name はそのままに、期限を now から 7 日後にしたトークンを発行し直して、
+ * 同じ属性の Cookie で返す。exp は署名した JSON の中にあるので、Cookie の Max-Age を延ばすだけでは足りない。
+ * DB も Discord も読まない。発行し直したら true
+ */
+export async function renewSessionIfNeeded(c: Context<SessionEnv>, now: number): Promise<boolean> {
+  const session = c.get("session");
+  if (session.exp - now >= SESSION_RENEW_BELOW_MS) return false;
+  setSessionCookie(c, await issueSession(c.env.SESSION_SECRET, session, now));
+  return true;
 }
 
 /** セッションを検証するミドルウェア。ないか期限切れなら 401 を返す（Design Doc 7.1） */

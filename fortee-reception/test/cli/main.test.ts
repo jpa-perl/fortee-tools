@@ -25,6 +25,31 @@ beforeAll(async () => {
   dir = await mkdtemp(join(tmpdir(), "checkin-cli-main-"));
   await writeFile(config("broken.toml"), '[conference]\nslug = ""\nname = 1\n');
   await writeFile(
+    config("many-errors.toml"),
+    [
+      "[conference]",
+      'slug = "x"',
+      'name = "X"',
+      'timezone = "Asia/Tokyo"',
+      'environment = "another-conference"',
+      "[[events]]",
+      'id = "event-1"',
+      'name = "本編"',
+      'key = "main"',
+      "[[receptions]]",
+      'id = "main"',
+      'name = "本編受付"',
+      "periods = [{ start = 2026-11-28T09:30:00, end = 2026-11-28T17:30:00 }]",
+      "accept = []",
+      'require = ["main"]',
+      'checkin = ["main"]',
+      'rejectMessage = "本編チケットがありません"',
+      "[template]",
+      'reference = "{{user.nickname}}"',
+      "",
+    ].join("\n"),
+  );
+  await writeFile(
     config("other-env.toml"),
     '[conference]\nslug = "x"\nname = "X"\ntimezone = "Asia/Tokyo"\nenvironment = "another-conference"\n',
   );
@@ -65,7 +90,12 @@ describe("管理 CLI の入口（Design Doc 8.1）", () => {
     ["--config の値がない", ["migrate", "--env", "local", "--config"], "--config には値が要ります"],
     ["--config が次のオプションを値として取り込む", ["migrate", "--config", "--env", "local"], "--config には値が要ります"],
     ["--env の値がない", ["migrate", "--env"], "--env には値が要ります"],
-    ["まだ実装していないコマンドでも、値のない --config", ["validate", "--env", "local", "--config"], "--config には値が要ります"],
+    ["どのコマンドでも、値のない --config", ["validate", "--env", "local", "--config"], "--config には値が要ります"],
+    ["--event の値がない", ["import", "--env", "local", "--zip", "x.zip", "--event"], "--event には値が要ります"],
+    ["--zip が次のオプションを値として取り込む", ["import", "--env", "local", "--zip", "--event", "main"], "--zip には値が要ります"],
+    ["--out の値がない", ["export", "--env", "local", "--out"], "--out には値が要ります"],
+    ["--done の値がない", ["preview", "--env", "local", "--event", "main", "--ticket", "A-1", "--done"], "--done には値が要ります"],
+    ["--from の値がない", ["restore-records", "--env", "local", "--from"], "--from には値が要ります"],
   ])("値を取るオプションに値がなければ、省略として扱わずに止まる: %s", async (_name, args, message) => {
     // 省略として扱うと、既定の設定ファイル（config/local.toml）で先へ進む
     const result = await cli(...args);
@@ -101,9 +131,52 @@ describe("管理 CLI の入口（Design Doc 8.1）", () => {
     expect(result.stderr).toMatch(/conference\.environment: /);
   });
 
-  it("まだ実装していないコマンドは、そのことを知らせて終わる", async () => {
-    const result = await cli("validate", "--env", "local");
+  it.each([
+    ["import に --out", ["import", "--env", "local", "--event", "main", "--zip", "x.zip", "--out", "dir"], "import が受け取らないオプションです: --out"],
+    ["publish に --event", ["publish", "--env", "local", "--event", "main"], "publish が受け取らないオプションです: --event"],
+    ["validate に知らないオプション", ["validate", "--env", "local", "--strict"], "知らないオプションです: --strict"],
+    ["export に打ち間違えたオプション", ["export", "--env", "local", "--out", "dir", "--chunks", "100"], "知らないオプションです: --chunks"],
+    ["deploy に --dry-run", ["deploy", "--env", "local", "--dry-run"], "知らないオプションです: --dry-run"],
+  ])("そのコマンドが受け取らないオプションで、D1 と KV に触れる前に止まる: %s", async (_name, args, message) => {
+    const result = await cli(...args);
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain("validate はまだ実装していません");
+    expect(result.stderr).toContain(message);
+  });
+
+  it.each([
+    ["import の --event", ["import", "--env", "local", "--zip", "x.zip"], "--event <値> を指定してください"],
+    ["import の --zip", ["import", "--env", "local", "--event", "main"], "--zip <値> を指定してください"],
+    ["preview の --ticket", ["preview", "--env", "local", "--event", "main"], "--ticket <値> を指定してください"],
+  ])("必須のオプションがなければ止まる: %s", async (_name, args, message) => {
+    const result = await cli(...args);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain(message);
+  });
+
+  it("1 回だけ指定できるオプションを 2 回指定すると、後の値を黙って採らずに止まる", async () => {
+    const result = await cli("import", "--env", "local", "--event", "main", "--event", "eve", "--zip", "x.zip");
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("--event が 2 回以上、指定されています");
+  });
+
+  it("validate は、設定ファイルの誤りを、--env との不一致も含めてすべて列挙して、非ゼロで終わる", async () => {
+    const result = await cli("validate", "--env", "local", "--config", config("many-errors.toml"));
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("に誤りがあります（3 件）");
+    expect(result.stderr).toMatch(/conference\.environment: "another-conference" が --env（"local"）と一致しません/);
+    expect(result.stderr).toMatch(/receptions\[0\]\.checkin\[0\]: /);
+    expect(result.stderr).toMatch(/template\.reference: /);
+  });
+
+  it("validate は、正しい設定で成功する", async () => {
+    const result = await cli("validate", "--env", "local");
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("誤りはありません");
+  });
+
+  it("設定ファイル全体を読むコマンド（import、preview、publish）は、設定に誤りがあれば、すべて列挙して止まる", async () => {
+    const result = await cli("import", "--env", "another-conference", "--config", config("many-errors.toml"), "--event", "main", "--zip", "x.zip");
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("に誤りがあります（2 件）");
   });
 });

@@ -1,0 +1,29 @@
+{
+  "environment": "local",
+  "slug": "yapc-tokyo-2026-sandbox",
+  "release": "test-release",
+  "startedAt": 1795867200000,
+  "startedAtIso": "2026-11-28T21:00:00+09:00",
+  "generation": "<世代>",
+  "configVersion": 1794000000010,
+  "eventVersions": {
+    "00000000-0000-4000-8000-000000000001": 1794000000001,
+    "00000000-0000-4000-8000-000000000002": 1794000000002,
+    "00000000-0000-4000-8000-000000000003": 1794000000003
+  },
+  "maxSeq": 13,
+  "recordCount": 13,
+  "devicesReadAt": 1795867200000,
+  "chunk": null,
+  "driftThresholdMinutes": 5,
+  "files": [
+    "bulk-checkin-1.csv",
+    "cancelled.csv",
+    "done-with-cancel.csv",
+    "missing-from-snapshot.csv",
+    "fortee-only.csv",
+    "clock-drift.csv",
+    "devices.csv",
+    "records.json"
+  ]
+}

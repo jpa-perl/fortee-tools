@@ -1,10 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 // アプリの殻と Service Worker（Design Doc 6.11、6.12）。
-// 画面設計書の画面はまだないので、基盤の仮の画面で確かめる。
+// 未ログインの画面（S01）で確かめる。ログインした後の画面は flows.spec.ts にある。
 
-const offlineReady = "オフラインで起動できます";
+/** Service Worker が有効になるのを待つ。事前のキャッシュが終わってから、有効になる（Design Doc 6.11） */
+const serviceWorkerActive = (page: Page): Promise<void> =>
+  page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
 
 test("静的アセットと Worker が同じオリジンから返る", async ({ page, request }) => {
   await page.goto("/");
@@ -31,13 +33,15 @@ test("根要素のフォントは、日本語のフォント名から始まる",
 
 test("アクセシビリティの検査（axe-core）に違反がない", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByTestId("offline-ready")).not.toHaveText("確認中");
+  await expect(page.getByRole("button", { name: "Discord でログイン" })).toBeVisible();
   const { violations } = await new AxeBuilder({ page }).analyze();
   expect(violations).toEqual([]);
 });
 
+// Service Worker は、Chromium と WebKit の両方で確かめる。Playwright の WebKit でも、Service Worker の登録、
+// 事前のキャッシュ、オフラインでの起動、版の更新が動く（試して確かめた）。WebKit でできないのは、Service Worker が
+// ページを制御した後の /api/ の要求を page.route で横取りすることだけである
 test.describe("Service Worker", () => {
-  test.skip(({ browserName }) => browserName !== "chromium", "Service Worker は Chromium で確かめる（Design Doc 11 章）");
 
   test("初回のインストールで、再読み込みせずにオフラインで起動できる状態になる", async ({ page }) => {
     await page.goto("/");
@@ -45,7 +49,8 @@ test.describe("Service Worker", () => {
     await page.evaluate(() => {
       (window as unknown as { marker: string }).marker = "kept";
     });
-    await expect(page.getByTestId("offline-ready")).toHaveText(offlineReady);
+    await serviceWorkerActive(page);
+    await expect.poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
     expect(await page.evaluate(() => (window as unknown as { marker?: string }).marker)).toBe("kept");
 
     // 事前にキャッシュした一覧のすべてが、このビルドのキャッシュに入っている
@@ -59,6 +64,9 @@ test.describe("Service Worker", () => {
     expect(cached.keys).toEqual([cached.name]);
     expect(cached.urls).toContain("/");
     expect(cached.urls).toContain("/manifest.webmanifest");
+    // ホーム画面のアイコンも、殻に含める
+    expect(cached.urls).toContain("/icon-192.png");
+    expect(cached.urls).toContain("/apple-touch-icon.png");
     expect(cached.urls.some((url) => url.endsWith(".js"))).toBe(true);
     expect(cached.urls.some((url) => url.endsWith(".css"))).toBe(true);
     // Service Worker 自身と、Worker の出力は入らない
@@ -68,21 +76,23 @@ test.describe("Service Worker", () => {
 
   test("オフラインで起動でき、クエリ付きのページ遷移にも殻を返す", async ({ page, context }) => {
     await page.goto("/");
-    await expect(page.getByTestId("offline-ready")).toHaveText(offlineReady);
+    await serviceWorkerActive(page);
 
     await context.setOffline(true);
     await page.reload();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("YAPC::Tokyo 2026（ローカル）");
-    await expect(page.getByTestId("offline-ready")).toHaveText(offlineReady);
+    await expect(page.getByRole("button", { name: "Discord でログイン" })).toBeVisible();
 
-    // Discord から /?login=... 付きで戻ったときも、殻を返す
+    // Discord から /?login=... 付きで戻ったときも、殻を返す。オフラインでは操作者の情報を取得できないので、
+    // 未ログインに戻って「ログインできませんでした」を出す（画面設計書 S01）
     await page.goto("/?login=ok");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("YAPC::Tokyo 2026（ローカル）");
+    await expect(page.getByText("ログインできませんでした")).toBeVisible();
   });
 
   test("/api/ と /auth/ 以下の要求には、キャッシュから答えない", async ({ page, context }) => {
     await page.goto("/");
-    await expect(page.getByTestId("offline-ready")).toHaveText(offlineReady);
+    await serviceWorkerActive(page);
 
     const online = await page.evaluate(async () => (await fetch("/api/me")).status);
     expect(online).toBe(401);
