@@ -5,12 +5,12 @@
 # 合成の ZIP は、docs/research/fortee/ の記述から作ったもので、Sandbox からダウンロードした ZIP ではない。
 # イベント ID も合成の値で、Sandbox の本物のイベント ID ではない。ZIP を作って公開するまでの手順:
 #
-#   npm run cli -- migrate --env local
+#   npm run admin -- migrate --env local
 #   node test/cli/make-synthetic-zips.ts            （.work/local/synthetic-zips/ に、イベントごとの ZIP を作る）
-#   npm run cli -- import --env local --event main  --zip .work/local/synthetic-zips/main.zip
-#   npm run cli -- import --env local --event eve   --zip .work/local/synthetic-zips/eve.zip
-#   npm run cli -- import --env local --event party --zip .work/local/synthetic-zips/party.zip
-#   npm run cli -- publish --env local
+#   npm run admin -- import --env local --event main  --zip .work/local/synthetic-zips/main.zip
+#   npm run admin -- import --env local --event eve   --zip .work/local/synthetic-zips/eve.zip
+#   npm run admin -- import --env local --event party --zip .work/local/synthetic-zips/party.zip
+#   npm run admin -- publish --env local
 
 [conference]
 slug = "yapc-tokyo-2026-sandbox"

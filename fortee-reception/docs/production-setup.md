@@ -174,7 +174,7 @@ npx wrangler d1 execute DB --env <環境名> --remote --json --command "SELECT 1
 書いたら、検証する。`validate` は D1 と KV に触れないので、この時点で実行できる。誤りがあれば、すべて列挙される。
 
 ```bash
-npm run cli -- validate --env <環境名>
+npm run admin -- validate --env <環境名>
 ```
 
 ## 5. マイグレーション、デプロイ、秘密
@@ -182,7 +182,7 @@ npm run cli -- validate --env <環境名>
 ### 5.1 マイグレーションを適用する
 
 ```bash
-npm run cli -- migrate --env <環境名>
+npm run admin -- migrate --env <環境名>
 ```
 
 `migrate` は、D1 にマイグレーションを適用し、D1 と KV に環境の印（環境名）を書く。wrangler が適用の確認を求めるので、対話できる端末で実行する。確認で取り消すと、`migrate` は印を書かずに止まる。
@@ -192,7 +192,7 @@ npm run cli -- migrate --env <環境名>
 `wrangler.jsonc` と `config/<環境名>.toml` をコミットする。`deploy` は、`fortee-reception/` 以下に未コミットの変更（追跡していないファイルを含む）があると止まる。
 
 ```bash
-npm run cli -- deploy --env <環境名>
+npm run admin -- deploy --env <環境名>
 ```
 
 `deploy` は、受付アプリ、Service Worker、Worker をその環境に向けてビルドし、デプロイする。`vite build` と `wrangler deploy` を、手で分けて実行しない。デプロイの記録には、リリース名（`git describe`）が残る。リリースに名前を付けるときは、コミットに `fortee-reception/v0.3.0` の形のタグを付けてからデプロイする。タグがなければ、リリース名はコミットの短いハッシュになる（Design Doc 8.1）。
@@ -259,7 +259,7 @@ https://checkin-<環境名>.<アカウントのサブドメイン>.workers.dev/a
 イベントごとに、ZIP を取り込む。取り込みの出力は `.work/<環境名>/` に置かれ、参加者の情報を含む。
 
 ```bash
-npm run cli -- import --env <環境名> --event <イベントの key> --zip <ZIP のパス>
+npm run admin -- import --env <環境名> --event <イベントの key> --zip <ZIP のパス>
 ```
 
 取り込みが出すチケット種別とチケット番号の接頭辞が、指定したイベントのものであることを確かめる（PRD 9 章の 1）。ZIP のスラッグが `conference.slug` と違うと、取り込みは止まる（Design Doc 8.3）。
@@ -275,7 +275,7 @@ fortee がチケット番号を重ねて採番した参加者がいると、取�
 参考情報テンプレートを使うときは、公開の前に、実在の参加者で描画を確かめる（Design Doc 8.7）。
 
 ```bash
-npm run cli -- preview --env <環境名> --event <イベントの key> --ticket <チケット番号>
+npm run admin -- preview --env <環境名> --event <イベントの key> --ticket <チケット番号>
 ```
 
 テンプレートには HTML を書ける（Design Doc 4.6）。改行と字下げは表示に出ないので、区切りは見出し、`<p>`、`<ul>`、`<br>` などのタグで書く。`preview` が出すのは、受付アプリが表示するのと同じ HTML の文字列で、参加者の値の中の `<` や `/` は文字参照（`&lt;`、`&#x2F;`）のまま出る。見え方は、公開の後に受付アプリの参考情報で確かめる。受付ごとに案内を出し分けるときは、`{{#reception.is.<受付の id>}}` か `{{#reception.checkin.<イベントの key>}}` で囲む（Design Doc 4.6）。このとき `preview` には `--reception <受付の id>` を付ける。付けないと受付なしの文脈になり、囲んだ部分は出ない。参加者の値（`{{…}}`）は、要素の中身か、引用符で囲んだ属性値にだけ置く。`href` などの URL の属性と、`<script>`、`<style>` の中には置かない。
@@ -283,7 +283,7 @@ npm run cli -- preview --env <環境名> --event <イベントの key> --ticket 
 すべてのイベントを取り込んだら、公開する。
 
 ```bash
-npm run cli -- publish --env <環境名>
+npm run admin -- publish --env <環境名>
 ```
 
 ここで公開するデータが本番の ZIP か、Sandbox や合成の ZIP かで、後の手順が変わる。本番の設定と本番の ZIP を公開し、本番のチケットの受付を始めた時点が運用の開始で、以後は記録を消せない。Sandbox や合成のデータを公開して確認に使った環境は、運用の開始の前に D1 と KV を作り直し、端末をログアウトする（開発・環境構築手順書 6 章、7 章）。試験のデータを本番環境に載せたくないときは、確認用の環境を別に作る（Design Doc 3.6）。
@@ -312,7 +312,7 @@ npx wrangler deployments list --env <環境名>
 | `環境の印がありません` | `migrate` をまだ実行していない。5.1 を行う |
 | `環境の印（…）が --env（…）と一致しません` | `wrangler.jsonc` の env に、別の環境の D1 か KV の ID を書いている。3.4 を見直す |
 | `適用されていないマイグレーションがあります` | `migrate` をやり直す |
-| `作業ツリーに未コミットの変更があります` | `fortee-reception/` 以下の変更をコミットしてから、`deploy` をやり直す |
+| `作業ツリーに未コミットの変更があります` | `fortee-reception/` 以下の変更をコミットしてから、`deploy` をやり直す。コミットする前の変更を実機で確かめるときだけ、`--dangerously-allow-dirty` を付ける。リリース名の末尾に `-dirty` が付く |
 
 ログインが失敗するときは、秘密の名前（5.3 の `secret list`）と、リダイレクト URI（5.4）を見直す。Worker のログは、ダッシュボードの Workers Logs で読める（Design Doc 7.6）。
 

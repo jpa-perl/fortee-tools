@@ -70,7 +70,7 @@ openssl rand -base64 32
 ローカルの D1 にマイグレーションを適用してから、開発サーバを起動する。`migrate` は、ローカルの D1 と KV に環境の印（`local`）も書く。
 
 ```bash
-npm run cli -- migrate --env local
+npm run admin -- migrate --env local
 ```
 
 ```bash
@@ -84,7 +84,7 @@ npm run dev
 ローカルの設定は `config/local.toml` に置く。スラッグは Sandbox のカンファレンスのもので、`conference.environment` は `local` にする。イベントとチケット種別は、合成の ZIP に合わせてあり、イベント ID も合成の値である。取り込む ZIP は、`test/cli/make-synthetic-zips.ts` で作る合成の ZIP を使う。合成の ZIP は、fortee の仕様調査の記述から作ったもので、Sandbox からダウンロードした ZIP ではない（`test/cli/synthetic-zip.ts` の冒頭）。本番の ZIP は参加者の情報を含むので、リポジトリに置かない。
 
 ```bash
-npm run cli -- migrate --env local
+npm run admin -- migrate --env local
 ```
 
 ```bash
@@ -94,15 +94,15 @@ node test/cli/make-synthetic-zips.ts
 ZIP は `.work/local/synthetic-zips/` に、イベントごとに 1 つ（`main.zip`、`eve.zip`、`party.zip`）できる。
 
 ```bash
-npm run cli -- validate --env local
+npm run admin -- validate --env local
 ```
 
 ```bash
-npm run cli -- import --env local --event <イベントの key> --zip <ZIP のパス>
+npm run admin -- import --env local --event <イベントの key> --zip <ZIP のパス>
 ```
 
 ```bash
-npm run cli -- publish --env local
+npm run admin -- publish --env local
 ```
 
 ### 4.4 テストと検査
@@ -164,11 +164,11 @@ E2E_SHOTS=<出力先のディレクトリ> npm run test:e2e
 3. マイグレーションを適用し、デプロイする。`migrate` は、作り直した D1 と KV に環境の印を書く
 
    ```bash
-   npm run cli -- migrate --env <環境名>
+   npm run admin -- migrate --env <環境名>
    ```
 
    ```bash
-   npm run cli -- deploy --env <環境名>
+   npm run admin -- deploy --env <環境名>
    ```
 
 4. 本番の設定（`config/<環境名>.toml`）で、全イベントの本番の ZIP を取り込んで公開する（本番構築 6 章）。運用を始めた後の環境には、Sandbox の設定と ZIP を公開しない（Design Doc 3.6）
@@ -180,11 +180,11 @@ E2E_SHOTS=<出力先のディレクトリ> npm run test:e2e
 運用の開始から最終の書き出しまでは、同期プロトコルの版、配布物の形式の版、IndexedDB の形、既存のマイグレーションのファイルを変える変更をデプロイしない。端末に、更新前の受付アプリ、端末内のデータ、未同期の記録が残るためである（Design Doc 9.6）。これらを変えない修正（画面、判定の不具合、管理 CLI）と、マイグレーションの追加はデプロイできる。マージの前に、Design Doc 9.7 の表で、どの変更に当たるかを確かめる。デプロイは、マイグレーションを適用してから行う。
 
 ```bash
-npm run cli -- migrate --env <環境名>
+npm run admin -- migrate --env <環境名>
 ```
 
 ```bash
-npm run cli -- deploy --env <環境名>
+npm run admin -- deploy --env <環境名>
 ```
 
 `deploy` は、デプロイしたリリース名を Workers の版の記録に残す。どのリリースが動いているかは、次のコマンドで確かめる。

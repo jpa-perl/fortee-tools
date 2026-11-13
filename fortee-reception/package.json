@@ -13,7 +13,7 @@
     "test:e2e": "playwright test",
     "typecheck": "tsc -b",
     "lint": "eslint .",
-    "cli": "node src/cli/main.ts"
+    "admin": "node src/cli/main.ts"
   },
   "dependencies": {
     "@preact/signals": "2.11.4",

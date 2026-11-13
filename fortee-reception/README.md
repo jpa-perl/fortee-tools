@@ -52,7 +52,7 @@ npx playwright install webkit chromium
 2. ローカルの D1 にマイグレーションを適用する
 
    ```bash
-   npm run cli -- migrate --env local
+   npm run admin -- migrate --env local
    ```
 
 3. 合成の ZIP を作り、取り込んで公開する。ZIP は `.work/local/synthetic-zips/` にできる
@@ -62,19 +62,19 @@ npx playwright install webkit chromium
    ```
 
    ```bash
-   npm run cli -- import --env local --event main --zip .work/local/synthetic-zips/main.zip
+   npm run admin -- import --env local --event main --zip .work/local/synthetic-zips/main.zip
    ```
 
    ```bash
-   npm run cli -- import --env local --event eve --zip .work/local/synthetic-zips/eve.zip
+   npm run admin -- import --env local --event eve --zip .work/local/synthetic-zips/eve.zip
    ```
 
    ```bash
-   npm run cli -- import --env local --event party --zip .work/local/synthetic-zips/party.zip
+   npm run admin -- import --env local --event party --zip .work/local/synthetic-zips/party.zip
    ```
 
    ```bash
-   npm run cli -- publish --env local
+   npm run admin -- publish --env local
    ```
 
 4. 開発サーバを起動し、`http://localhost:5173` をデスクトップの Chrome で開く
@@ -110,7 +110,7 @@ npm run test:e2e
 どのコマンドも `--env <環境名>` が必須で、既定値はない。環境名から、wrangler の env、作業ディレクトリ（`.work/<環境名>/`）、既定の設定ファイル（`config/<環境名>.toml`）が決まる。`--env local` は、ローカルの模擬環境を読み書きする。
 
 ```bash
-npm run cli -- <コマンド> --env <環境名>
+npm run admin -- <コマンド> --env <環境名>
 ```
 
 | コマンド | 主な引数 | すること |
