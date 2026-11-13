@@ -20,11 +20,17 @@ type Props = {
  * 固定の要素は高さを保ち、本文の領域だけを縮めてスクロールさせる。
  * 固定の要素を本文の上に重ねて置く作り（position: fixed）にはしない。
  * 高さが足りなくなっても、要素が重なって押せなくなったり、はみ出して見えなくなったりしないためである
+ * ヘッダには position: sticky を付ける。この枠はスクロールしないので、配置は変わらない。iOS 27 は、ホーム画面に
+ * 追加したアプリの上端にぼかしを重ねるが、上端に sticky か fixed の不透明な要素があると、その色で塗って、ぼかさない
+ * （WebKit のバグ 325807。Apple の文書にない挙動で、iPhone 17 の実機で確かめた）。ホーム画面のアプリでは
+ * env(safe-area-inset-top) が 0 になるので、安全領域だけを塗る帯では効かない
  */
 export function ScreenFrame({ header, children, footer, ownScroll }: Props) {
   return (
     <div class="flex h-dvh flex-col">
-      {header !== undefined && <header class="safe-top shrink-0 border-b border-divider bg-surface">{header}</header>}
+      {/* ヘッダのない画面では、ステータスバーの裏を地の色で塗る（styles.css の .status-bar-fill） */}
+      {header === undefined && <div aria-hidden="true" class="status-bar-fill bg-ground" />}
+      {header !== undefined && <header class="safe-top sticky top-0 shrink-0 border-b border-divider bg-surface">{header}</header>}
       <Notice bare={header === undefined} />
       {ownScroll === true ? (
         children
