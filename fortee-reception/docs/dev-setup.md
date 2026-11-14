@@ -127,7 +127,7 @@ npm run lint
 
 `npm run test:e2e` は、サーバとデータを自分で用意する（`test/e2e/setup/serve.ts`）。開発の `.wrangler/state` と `.work/` には触れず、`.wrangler/e2e/` と `.wrangler/e2e-sync/` を毎回空にして、合成の ZIP とテスト用の設定（`test/e2e/fixtures/e2e.toml`）を公開し、ビルドの出力を `wrangler dev` でポート 4173 と 4174 に配る。4.3 の公開は要らない。セッションの秘密はテスト用の値を渡し、`.dev.vars` の値は使わない。Discord には通信しない。どちらかのポートをほかのサーバが使っていると、起動できずに止まる。QR の文字列を判定に渡し、高速受付を切り替えるテスト用の入口（`window.__checkinTest`）は、このビルドと開発サーバ（`npm run dev`）にだけ入り、CLI の `deploy` のビルドには入らない。
 
-GitHub Actions（リポジトリの直下の `.github/workflows/ci.yml`）は、`main` への push とプルリクエストで、3 章の導入と、この 4 つのコマンドを実行する。秘密は使わない。
+GitHub Actions（リポジトリの直下の `.github/workflows/ci.yml`）は、プルリクエストで、3 章の導入と、この 4 つのコマンドを実行する。秘密は使わない。`main` への push では、デプロイの workflow（`.github/workflows/deploy.yml`）が同じ検査を呼び、通った後にデプロイする（8 章）。
 
 見た目を確かめるスクリーンショットは、出力先を環境変数で渡したときだけ撮る。幅 390px の Chromium の分を撮る。
 
@@ -187,6 +187,12 @@ npm run admin -- migrate --env <環境名>
 npm run admin -- deploy --env <環境名>
 ```
 
+GitHub Actions からのデプロイを設定した環境（本番構築 5.5）では、`deploy` を手で実行しなくてよい。`fortee-reception/` 以下を変えるコミットが `main` に入ると、`.github/workflows/deploy.yml` が、4.4 の検査とテストが通った後に、上の `deploy` を実行する。`main` へのマージがそのままデプロイになるので、デプロイできる変更かどうかは、マージの前に確かめる。
+
+この workflow は、`migrate` を実行しない。マイグレーションを足す変更では、マージの前に、手元で `migrate` を実行する。未適用のマイグレーションが残っていると、workflow の `deploy` は検査で止まる。そのときは、`migrate` を実行してから、GitHub の Actions の画面で、Deploy の workflow を `main` で手で実行する（Run workflow）。止まった実行のやり直し（Re-run）は使わない。やり直しは、その実行のコミットをデプロイするので、後のコミットがデプロイ済みだと、古いコードに戻る。`main` のほかのブランチを選んでも、デプロイはしない。workflow のファイルだけを変えたコミットではデプロイしないので、確かめるときも手で実行する。
+
+リリースに名前を付けるとき（本番構築 5.2）は、マージの後のデプロイではタグがまだないので、リリース名はコミットの短いハッシュになる。`main` のコミットにタグを付けて push してから、Deploy の workflow を手で実行する。
+
 `deploy` は、デプロイしたリリース名を Workers の版の記録に残す。どのリリースが動いているかは、次のコマンドで確かめる。
 
 ```bash
@@ -206,7 +212,7 @@ npx wrangler deployments list --env <環境名>
 git worktree add ../checkin-<環境名> <コミット>
 ```
 
-コードを戻すときは、Design Doc 9.7 の手順に従う。上の手順で形を変えたデプロイより前には戻さない。
+コードを戻すときは、Design Doc 9.7 の手順に従う。GitHub Actions からのデプロイを設定した環境では、手元から前のコミットをデプロイしても、次に `fortee-reception/` 以下を変えるコミットが `main` に入ると、`main` のコードに置き換わる。戻したままにするには、`main` でも変更を取り消す。上の手順で形を変えたデプロイより前には戻さない。
 
 ## 9. 秘密の扱い
 
@@ -214,6 +220,7 @@ git worktree add ../checkin-<環境名> <コミット>
 | --- | --- | --- |
 | Discord のクライアントシークレット、ギルド ID、ロール ID、`SESSION_SECRET` | 環境ごとの Worker の secret。ローカルは `.dev.vars` | リポジトリに置かない（FR-5）。Discord の値はローカルも本番と同じで、開発者が善良に管理する（4.1）。名前は Design Doc 3.6 |
 | Cloudflare の API トークン | 管理者の端末の環境変数 | 管理者ごとに、その管理者のロールが持つ権限のうち、操作に要る権限だけを持つものを作る（バックエンド 4 章）。リポジトリとシェルの履歴に残さない |
+| GitHub Actions がデプロイに使う Cloudflare の API トークン | GitHub の Environment（環境名と同じ名前）の secret `CLOUDFLARE_API_TOKEN` | 管理者のトークンとは別に、デプロイに要る権限だけを持つものを作る。Environment は、デプロイできるブランチを `main` に限る（本番構築 5.5） |
 | 書き出しのファイル、取り込む ZIP、作業ディレクトリ（`.work/<環境名>/`） | 管理者の端末 | 参加者の情報を含む。リポジトリに置かず、保持期間（PRD 7.4）の後に消す（10 章） |
 
 `SESSION_SECRET` を差し替えると、その環境の全端末が再ログインになる（Design Doc 7.2）。ロールを外したスタッフのセッションをすぐに止めたいときの手段であり、端末のデータは消えない。

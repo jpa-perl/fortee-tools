@@ -1,0 +1,54 @@
+name: Deploy
+
+# fortee-reception を、Cloudflare の環境にデプロイする（fortee-reception/docs/dev-setup.md の 8 章）。
+# fortee-reception/ 以下を変える main への push で、CI（ci.yml）が通った後に、管理 CLI の deploy を実行する。手でも実行できる（workflow_dispatch）。
+#
+# - マイグレーションは適用しない。未適用のマイグレーションがあると、deploy は検査で止まる。
+#   管理者が、手元で migrate を実行してから、この workflow を main で手で実行する
+# - Cloudflare の API トークンは、GitHub の Environment（環境名と同じ名前）の secret に置く。
+#   Environment は、デプロイできるブランチを main に限る（production-setup 5.5）
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - fortee-reception/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: デプロイ（yapc-tokyo-2026）
+    needs: ci
+    # 手で実行するときも、main だけをデプロイする
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: yapc-tokyo-2026
+    # 同じ環境へのデプロイは、並べずに、始めた順に最後まで走らせる
+    concurrency:
+      group: deploy-yapc-tokyo-2026
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: fortee-reception
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          # リリース名を git describe で求めるので、タグと履歴をすべて取る（Design Doc 8.1）
+          fetch-depth: 0
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: fortee-reception/.node-version
+          cache: npm
+          cache-dependency-path: fortee-reception/package-lock.json
+      - run: npm ci
+      - run: npm run admin -- deploy --env yapc-tokyo-2026
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

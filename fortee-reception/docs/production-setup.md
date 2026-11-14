@@ -254,6 +254,25 @@ https://checkin-<環境名>.<アカウントのサブドメイン>.workers.dev/a
 
 受付アプリは、Worker が要求を受けたオリジンからこの URI を作る。登録した URI と 1 文字でも違うと、Discord が認可を拒む。
 
+### 5.5 GitHub Actions からのデプロイを設定する
+
+`main` への push で、GitHub Actions（リポジトリの直下の `.github/workflows/deploy.yml`）が、CI の通過後に 5.2 と同じ `deploy` を実行する（開発・環境構築手順書 8 章）。マイグレーションの適用（5.1）と秘密の設定（5.3）は行わない。使うには、次の 3 つを用意する。
+
+1. デプロイ専用の API トークンを作る。管理者のトークン（2.2）は使い回さない。権限は次のとおりにし、対象のアカウントをその環境のアカウントに限る
+
+   | 権限 | 使う操作 |
+   | --- | --- |
+   | Workers Scripts の Edit | デプロイ |
+   | D1 の Read | 環境の印と、適用済みのマイグレーションの照合 |
+   | Workers KV Storage の Read | 環境の印の照合 |
+
+   D1 と KV が Read で足りるか、ほかに要る権限があるかは、まだ確かめていない。workflow が権限の不足で止まったら、止まった操作に要る権限を足し、この表を直す
+
+2. GitHub のリポジトリの Settings の Environments で、環境名と同じ名前の Environment を作る。Deployment branches and tags を Selected branches and tags にし、`main` だけを足す。このリポジトリは公開するので、`main` のほかのブランチの workflow からトークンを読めないようにするためである
+3. その Environment の secret に、`CLOUDFLARE_API_TOKEN` の名前で、1 のトークンを入れる。リポジトリの secret には入れない
+
+`deploy.yml` は、環境名を workflow の中に書いている。環境を足すときは、`deploy.yml` の環境名を書き換えるか、環境ごとのジョブを足す。
+
 ## 6. データを取り込んで公開する
 
 イベントごとに、ZIP を取り込む。取り込みの出力は `.work/<環境名>/` に置かれ、参加者の情報を含む。
