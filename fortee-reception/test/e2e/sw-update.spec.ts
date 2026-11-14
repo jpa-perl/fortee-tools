@@ -1,5 +1,5 @@
 import { expect, type Page, test as base } from "@playwright/test";
-import { addSessionCookie, resultTitle, scan, scanButton } from "./helpers.ts";
+import { addSessionCookie, enableFastCheckin, resultTitle, scan, scanButton } from "./helpers.ts";
 import { qr } from "./setup/data.ts";
 import { serveShell, SHELL_VERSION_META, type ShellSite } from "./setup/shell-server.ts";
 
@@ -69,6 +69,7 @@ async function loginTo(page: Page, site: ShellSite): Promise<void> {
   await addSessionCookie(page.context(), site.origin);
   await page.goto(`${site.origin}/?login=ok`);
   await expect(scanButton(page)).toBeVisible();
+  await enableFastCheckin(page);
   await page.context().clearCookies();
 }
 

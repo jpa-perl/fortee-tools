@@ -2,6 +2,7 @@ import type { Ports } from "../services/ports.ts";
 import { midOperation } from "../state/derived.ts";
 import { judging, overlay, type Overlay, type Screen, screen } from "../state/model.ts";
 import type { Database } from "../storage/db.ts";
+import { closedStore, databaseStore, rehearsalStore, type Store } from "../storage/store.ts";
 
 // 操作（commands）が共有する、Signal にしない実行時の値と、反映の列（Design Doc 6.13）。
 //
@@ -13,6 +14,8 @@ type Runtime = {
   ports: Ports;
   /** IndexedDB の接続。持ち続けるのは、ロックを持つ画面だけ（Design Doc 6.3） */
   db: Database | null;
+  /** 操作が書き込みに使う記憶域（storage/store.ts）。接続を開いたときに selectStore() が入れる。接続のない間は closedStore */
+  store: Store;
   /** ロックを手放す関数。持っていなければ null */
   releaseLock: (() => void) | null;
   /** ログインの番号（Design Doc 6.4）。ログアウトのたびに 1 増える */
@@ -28,6 +31,7 @@ type Runtime = {
 export const rt: Runtime = {
   ports: undefined as unknown as Ports,
   db: null,
+  store: closedStore,
   releaseLock: null,
   loginEpoch: 0,
   failed: false,
@@ -42,14 +46,39 @@ export function fatal(error: unknown): void {
   const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
   console.error(error);
   rt.halt();
-  rt.db?.close();
-  rt.db = null;
+  closeDatabase();
   judging.value = false;
   overlay.value = null;
   screen.value = { id: "S99", error: message };
   rt.ports.wakeLock.set(false);
   rt.ports.historyGuard.setArmed(false);
   rt.settle();
+}
+
+// ───────── 記憶域 ─────────
+
+/** 接続を開いた。記憶域は、IndexedDB のものから始める */
+export function openedDatabase(db: Database): void {
+  rt.db = db;
+  selectStore(false);
+}
+
+/** 接続を閉じる。接続と記憶域は、ここと openedDatabase() でだけ、そろえて入れ替える */
+export function closeDatabase(): void {
+  rt.db?.close();
+  rt.db = null;
+  rt.store = closedStore;
+}
+
+/**
+ * 記憶域を選ぶ。リハーサルモードなら、記録だけをメモリに置く記憶域にする。モードによる記録の置き場の違いは、
+ * ここにだけある。リハーサルモードの記憶域は、選ぶたびに空から始まる
+ */
+export function selectStore(rehearsal: boolean): Store {
+  if (rt.db === null) throw new Error("接続がない");
+  const base = databaseStore(rt.db);
+  rt.store = rehearsal ? rehearsalStore(base) : base;
+  return rt.store;
 }
 
 // ───────── 反映の列 ─────────
@@ -63,7 +92,7 @@ export function queueIdle(): boolean {
 }
 
 /**
- * 列に処理を入れる。処理は、接続（db）を受け取り、途中で通信を待たない。
+ * 列に処理を入れる。処理は、記憶域（store）を受け取り、途中で通信を待たない。
  *
  * - 入れたときとログインの番号が変わっていれば（ログアウトの後）、何もせずに終える
  * - 処理が例外を投げたら（書き込みの失敗、記録の検証の失敗）、S99 に移る
@@ -71,7 +100,7 @@ export function queueIdle(): boolean {
  * 実行しなかったときと失敗したときは undefined を返す
  */
 export function enqueue<T>(
-  job: (db: Database) => Promise<T> | T,
+  job: (store: Store) => Promise<T> | T,
   options: { ignoreEpoch?: boolean } = {},
 ): Promise<T | undefined> {
   const epoch = rt.loginEpoch;
@@ -80,7 +109,7 @@ export function enqueue<T>(
     try {
       if (rt.failed || rt.db === null) return undefined;
       if (!options.ignoreEpoch && epoch !== rt.loginEpoch) return undefined;
-      return await job(rt.db);
+      return await job(rt.store);
     } catch (error) {
       fatal(error);
       return undefined;

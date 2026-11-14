@@ -1,6 +1,8 @@
 import type { ComponentChildren } from "preact";
 import {
   openLogoutConfirm,
+  requestFastCheckin,
+  requestRehearsal,
   setSoundEnabled,
   setVibrationEnabled,
   tapSync,
@@ -11,10 +13,12 @@ import {
   canVibrate,
   dataVersions,
   deviceLabel,
+  fastCheckin,
   formatClock,
   lastSyncAt,
   offlineReady,
   operator,
+  rehearsal,
   soundEnabled,
   storagePersisted,
   syncStatus,
@@ -24,11 +28,14 @@ import { Button } from "../Button.tsx";
 import { Header, SyncStatusIcon } from "../Header.tsx";
 import { ScreenFrame } from "../ScreenFrame.tsx";
 
-function Row({ label, children }: { label: string; children: ComponentChildren }) {
+/** wide は、見出しが長く、値が切り替えだけの行。見出しに幅を渡して、切り替えを右端に寄せる */
+function Row({ label, wide, children }: { label: string; wide?: boolean; children: ComponentChildren }) {
   return (
     <div class="flex min-h-14 items-center gap-4 border-b border-divider px-4 py-2 last:border-b-0">
-      <dt class="w-16 shrink-0 font-bold text-ink-sub">{label}</dt>
-      <dd class="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2">{children}</dd>
+      <dt class={`font-bold text-ink-sub ${wide === true ? "min-w-0 flex-1" : "w-16 shrink-0"}`}>{label}</dt>
+      <dd class={`flex items-center gap-x-3 gap-y-2 ${wide === true ? "shrink-0" : "min-w-0 flex-1 flex-wrap"}`}>
+        {children}
+      </dd>
     </div>
   );
 }
@@ -90,11 +97,20 @@ export function Menu() {
           <span class="font-bold tabular-nums">{lastSync === null ? "" : formatClock(lastSync)}</span>
           <SyncStatusIcon />
           <span class="ml-auto">
-            {/* 同期中とオフラインのときは押せない。再ログインが必要なときは、押すと S01 で再ログインする */}
-            <Button kind="outline" inline disabled={status === "syncing" || status === "offline"} onClick={tapSync}>
+            {/* 同期の停止（リハーサルモード）、同期中、オフラインのときは押せない。再ログインが必要なときは、押すと S01 で再ログインする */}
+            <Button
+              kind="outline"
+              inline
+              disabled={status === "paused" || status === "syncing" || status === "offline"}
+              onClick={tapSync}
+            >
               今すぐ同期
             </Button>
           </span>
+        </Row>
+        {/* オンにするときだけ、確認のダイアログ（S09-D2）を開く */}
+        <Row label="高速受付" wide>
+          <Switch label="高速受付" checked={fastCheckin.value} onChange={requestFastCheckin} />
         </Row>
         <Row label="音">
           <Switch label="音" checked={soundEnabled.value} onChange={(next) => void setSoundEnabled(next)} />
@@ -111,6 +127,10 @@ export function Menu() {
             <Switch label="振動" checked={vibrationEnabled.value} onChange={(next) => void setVibrationEnabled(next)} />
           </Row>
         )}
+        {/* どちらに切り替えるときも、確認のダイアログ（S09-D2）を開く */}
+        <Row label="リハーサルモード" wide>
+          <Switch label="リハーサルモード" checked={rehearsal.value} onChange={requestRehearsal} />
+        </Row>
       </dl>
       <div class="p-4 pt-6">
         <Button kind="outline" onClick={openLogoutConfirm}>

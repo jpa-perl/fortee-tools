@@ -52,16 +52,28 @@ export async function goOffline(page: Page): Promise<void> {
   await expect(page.getByRole("img", { name: /^オフライン/ }).first()).toBeVisible();
 }
 
-/** ログインして、データの準備を済ませ、ホームの停止中（S02）に着く。その後、オフラインにする */
+/**
+ * 高速受付を、テスト用の入口でオンにする。高速受付の既定はオフ（通常受付）で、オフでは読み取りのたびに
+ * 確認（S03-D1）が挟まる。確認を確かめないテストが、ログインの後に呼ぶ。設定は端末に残り、読み込み直しても続く
+ */
+export async function enableFastCheckin(page: Page): Promise<void> {
+  await page.evaluate(() => window.__checkinTest?.setFastCheckin(true));
+}
+
+/**
+ * ログインして、データの準備を済ませ、ホームの停止中（S02）に着く。その後、オフラインにする。
+ * 高速受付は、既定でオンにする。通常受付の確認を確かめるテストは fastCheckin: false を渡す
+ */
 export async function login(
   page: Page,
   baseURL: string | undefined,
-  options: { offline?: boolean; operator?: Operator } = {},
+  options: { offline?: boolean; operator?: Operator; fastCheckin?: boolean } = {},
 ): Promise<void> {
   if (baseURL === undefined) throw new Error("baseURL がない");
   await addSessionCookie(page.context(), baseURL, options.operator);
   await page.goto("/?login=ok");
   await expect(scanButton(page)).toBeVisible();
+  if (options.fastCheckin !== false) await enableFastCheckin(page);
   if (options.offline !== false) await goOffline(page);
 }
 
@@ -120,6 +132,7 @@ export async function shot(page: Page, testInfo: TestInfo, name: string): Promis
 
 declare global {
   interface Window {
-    __checkinTest?: { scan(text: string): void };
+    // src/app/commands/test-hook.ts の TestHook と同じ形
+    __checkinTest?: { scan(text: string): void; setFastCheckin(enabled: boolean): Promise<void> };
   }
 }

@@ -175,6 +175,14 @@ export function receptionChangePreview(change: ReceptionChange): { name: string 
   return { name: reception.name, outOfPeriod: receptionStatus(reception, now.value) !== "inPeriod" };
 }
 
+// ───────── S03-D1 ─────────
+
+/** S03-D1 の通常受付の確認に出す値。読み取ったチケットと、その持ち主 */
+export function qrConfirmView(ticket: Ticket): { userName: string; name: string; ticketNo: string; ticketType: string } {
+  const owned = snapshotIndex.value?.byUser.get(ticket.userName) ?? [ticket];
+  return { userName: ticket.userName, name: combineNames(owned), ticketNo: ticket.ticketNo, ticketType: ticket.ticketType };
+}
+
 // ───────── S04 ─────────
 
 export type ResultTone = "success" | "caution" | "reject";

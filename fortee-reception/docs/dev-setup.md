@@ -125,7 +125,7 @@ npm run lint
 
 `npm test` は core、app、worker、cli の Vitest と、lint の規則が違反を検出することの検査（Design Doc 3.2）を、`npm run test:e2e` は Playwright の画面のテストを動かす。何を確かめるかは Design Doc 11 章にある。
 
-`npm run test:e2e` は、サーバとデータを自分で用意する（`test/e2e/setup/serve.ts`）。開発の `.wrangler/state` と `.work/` には触れず、`.wrangler/e2e/` と `.wrangler/e2e-sync/` を毎回空にして、合成の ZIP とテスト用の設定（`test/e2e/fixtures/e2e.toml`）を公開し、ビルドの出力を `wrangler dev` でポート 4173 と 4174 に配る。4.3 の公開は要らない。セッションの秘密はテスト用の値を渡し、`.dev.vars` の値は使わない。Discord には通信しない。どちらかのポートをほかのサーバが使っていると、起動できずに止まる。QR の文字列を判定に渡すテスト用の入口（`window.__checkinTest`）は、このビルドと開発サーバ（`npm run dev`）にだけ入り、CLI の `deploy` のビルドには入らない。
+`npm run test:e2e` は、サーバとデータを自分で用意する（`test/e2e/setup/serve.ts`）。開発の `.wrangler/state` と `.work/` には触れず、`.wrangler/e2e/` と `.wrangler/e2e-sync/` を毎回空にして、合成の ZIP とテスト用の設定（`test/e2e/fixtures/e2e.toml`）を公開し、ビルドの出力を `wrangler dev` でポート 4173 と 4174 に配る。4.3 の公開は要らない。セッションの秘密はテスト用の値を渡し、`.dev.vars` の値は使わない。Discord には通信しない。どちらかのポートをほかのサーバが使っていると、起動できずに止まる。QR の文字列を判定に渡し、高速受付を切り替えるテスト用の入口（`window.__checkinTest`）は、このビルドと開発サーバ（`npm run dev`）にだけ入り、CLI の `deploy` のビルドには入らない。
 
 GitHub Actions（リポジトリの直下の `.github/workflows/ci.yml`）は、`main` への push とプルリクエストで、3 章の導入と、この 4 つのコマンドを実行する。秘密は使わない。
 

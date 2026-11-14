@@ -78,6 +78,7 @@ export type MeResponse = z.infer<typeof meResponseSchema>;
 /**
  * ヘッダに出す同期の状態。
  *
+ * - paused: 同期を止めている（リハーサルモード）
  * - syncing: 同期中
  * - offline: オフライン（端末がネットワークにつながっていない）
  * - needsLogin: 再ログインが必要
@@ -85,10 +86,12 @@ export type MeResponse = z.infer<typeof meResponseSchema>;
  * - pending: 未同期あり
  * - synced: 同期済み
  */
-export type SyncStatus = "syncing" | "offline" | "needsLogin" | "failed" | "pending" | "synced";
+export type SyncStatus = "paused" | "syncing" | "offline" | "needsLogin" | "failed" | "pending" | "synced";
 
 /** 同期の状態を決める条件。複数が同時に真になりうる */
 export type SyncConditions = {
+  /** 同期を止めている（リハーサルモード。FR-50） */
+  paused: boolean;
   /** 同期の要求を送っている */
   syncing: boolean;
   /** 端末がネットワークにつながっていない */
@@ -102,11 +105,12 @@ export type SyncConditions = {
 };
 
 /**
- * 同期の状態の優先順（画面設計書 2.3）。同期中、オフライン、再ログインが必要、同期の失敗、未同期あり、
+ * 同期の状態の優先順（画面設計書 2.3）。同期の停止、同期中、オフライン、再ログインが必要、同期の失敗、未同期あり、
  * 同期済みの順に見て、最初に当てはまったものを返す。
  * オフラインのときに未同期の記録があるか（アイコンの印）は、呼び出し側が hasUnsent で見る
  */
 export function pickSyncStatus(conditions: SyncConditions): SyncStatus {
+  if (conditions.paused) return "paused";
   if (conditions.syncing) return "syncing";
   if (conditions.offline) return "offline";
   if (conditions.needsLogin) return "needsLogin";

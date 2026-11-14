@@ -1,3 +1,4 @@
+import { setFastCheckin } from "./modes.ts";
 import { handleDecoded } from "./scan.ts";
 import type { BootOptions } from "./session.ts";
 
@@ -9,10 +10,18 @@ import type { BootOptions } from "./session.ts";
 // ビルド（test/e2e/setup/serve.ts）にだけ入る。切り替えは、ビルドが埋め込む __TEST_HOOK__（build/app-shell.ts）
 // で行い、本番のビルドでは、この関数の呼び出しごと出力から落ちる。
 // カメラの許可待ちと、拒否された状態でも受け付ける（WebKit のテストでは、カメラを開始できない）。
+//
+// 高速受付の切り替えも置く。確認のダイアログ（S09-D2）を通さずに、設定を書く。高速受付の既定はオフで、オフでは
+// 読み取りのたびに確認（S03-D1）が挟まるので、確認を確かめないテストが、ログインの後にオンにする。
 
 export type TestHook = {
   /** QR の文字列を、いまデコードしたものとして渡す。例: `fortee:` に英数字 32 文字 */
   scan(text: string): void;
+  /**
+   * 高速受付を、確認のダイアログ（S09-D2）を通さずに切り替える。高速受付の既定はオフで、オフでは読み取りのたびに
+   * 確認（S03-D1）が挟まる。確認を確かめないテストが、準備でオンにする
+   */
+  setFastCheckin(enabled: boolean): Promise<void>;
 };
 
 declare global {
@@ -39,5 +48,5 @@ export function testBootOptions(): BootOptions {
 
 /** main.tsx が、起動のときに 1 回だけ呼ぶ */
 export function installTestHook(): void {
-  window.__checkinTest = { scan: handleDecoded };
+  window.__checkinTest = { scan: handleDecoded, setFastCheckin };
 }

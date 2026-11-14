@@ -150,3 +150,16 @@ export function judge(
   if (basis === undefined) throw new Error("済みの根拠の記録がない");
   return { kind: "alreadyDone", user, basis };
 }
+
+/** 判定が新たに済みにするチケット。記録を作らない判定では空 */
+export function newlyDoneOf(judgement: Judgement): Ticket[] {
+  return judgement.kind === "success" || judgement.kind === "continue" ? judgement.newlyDone : [];
+}
+
+/**
+ * QR の読み取りの判定の後に、次に行うこと（FR-49）。通常受付（高速受付がオフ）で、新たに済みにするチケットが
+ * あるときだけ、記録を作る前に確認する（confirm）。高速受付と、記録を作らない判定は、そのまま結果に進む（record）
+ */
+export function checkinStep(judgement: Judgement, fastCheckin: boolean): "confirm" | "record" {
+  return !fastCheckin && newlyDoneOf(judgement).length > 0 ? "confirm" : "record";
+}

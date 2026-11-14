@@ -29,11 +29,12 @@ import {
   overlay,
   override,
   records,
+  rehearsal,
   screen,
   snapshots,
   syncInFlight,
 } from "../state/model.ts";
-import { replaceDistribution, resetGeneration, writeMeta, writeSyncResult } from "../storage/db.ts";
+import type { Store } from "../storage/store.ts";
 import { recomputeReception, showNotice } from "./reception.ts";
 import { enqueue, rt } from "./runtime.ts";
 
@@ -167,19 +168,21 @@ function applyResponse(
   sentRecordIds: string[],
   response: SyncResponse,
 ): Promise<ApplyResult | undefined> {
-  return enqueue(async (db): Promise<ApplyResult> => {
+  return enqueue(async (store): Promise<ApplyResult | undefined> => {
+    // リハーサルモードに入った後に届いた応答は、反映しない。記憶域が、記録をメモリに置くものに替わっている
+    if (rehearsal.value) return undefined;
     // 前提の照合。要求に使った受信位置が、いまも同じか
     if (!sameCursor(cursor.value, requestCursor)) return "stale";
     if (requestCursor !== null && requestCursor.generation !== response.generation) {
       // DB が戻された。初期化だけを行い、この応答の records と nextSeq、送った記録への sent は使わない
       const next = { generation: response.generation, seq: 0 };
-      const all = await resetGeneration(db, next);
+      const all = await store.resetGeneration(next);
       records.value = all;
       cursor.value = next;
       return "reset";
     }
     const next = { generation: response.generation, seq: response.nextSeq };
-    const changed = await writeSyncResult(db, { sentRecordIds, received: response.records, cursor: next });
+    const changed = await store.writeSyncResult({ sentRecordIds, received: response.records, cursor: next });
     mergeRecords(changed);
     cursor.value = next;
     return "applied";
@@ -187,9 +190,9 @@ function applyResponse(
 }
 
 /** 配布物の差し替え。列の処理の中で呼ぶ。知らせは 2 行に並べて同時に出す（画面設計書 2.7） */
-async function swapDistribution(db: Parameters<typeof replaceDistribution>[0], bundle: Distribution): Promise<void> {
+async function swapDistribution(store: Store, bundle: Distribution): Promise<void> {
   const clearOverride = overrideTarget(bundle.config, override.value, rt.ports.platform.now()) === null;
-  await replaceDistribution(db, bundle.config, bundle.snapshots, { clearOverride: clearOverride && override.value !== null });
+  await store.replaceDistribution(bundle.config, bundle.snapshots, { clearOverride: clearOverride && override.value !== null });
   const first = config.value === null;
   config.value = bundle.config;
   snapshots.value = bundle.snapshots;
@@ -201,7 +204,7 @@ async function swapDistribution(db: Parameters<typeof replaceDistribution>[0], b
   if (kept !== null) {
     const next = { receptionId: kept.receptionId, until: nextBoundary(bundle.config, now.value) };
     if (next.until !== kept.until) {
-      await writeMeta(db, "override", next);
+      await store.writeMeta("override", next);
       override.value = next;
     }
   }
@@ -215,7 +218,7 @@ async function swapDistribution(db: Parameters<typeof replaceDistribution>[0], b
 /** そろった配布物を列に入れる。受付操作の途中なら保留する（Design Doc 6.13） */
 function enqueueDistribution(bundle: Distribution): Promise<void | undefined> {
   queuedSwaps++;
-  return enqueue(async (db) => {
+  return enqueue(async (store) => {
     // 前提の照合。取得した版が、いまの目標と同じか。違えば、次の同期で取得し直す
     if (!sameVersions(bundle.versions, targetVersions)) return;
     // 読み取りの受理（judging）は見ない。受理した読み取りの判定は、この処理より前に列に入っていれば
@@ -225,7 +228,7 @@ function enqueueDistribution(bundle: Distribution): Promise<void | undefined> {
       return;
     }
     held = null;
-    await swapDistribution(db, bundle);
+    await swapDistribution(store, bundle);
   }).finally(() => {
     queuedSwaps--;
   });
@@ -306,8 +309,8 @@ async function exchange(signal: AbortSignal, epoch: number): Promise<SyncOutcome
       records: batch,
     };
     const result = await rt.ports.network.sync(request, signal);
-    // ログアウトの後に届いた応答は、反映しない
-    if (epoch !== rt.loginEpoch || result.kind === "aborted") return "aborted";
+    // ログアウトの後と、リハーサルモードに入った後に届いた応答は、反映しない
+    if (epoch !== rt.loginEpoch || result.kind === "aborted" || rehearsal.value) return "aborted";
 
     if (result.kind === "http" && result.status === 413 && batch.length > 1) {
       // 本文が大きすぎる。送る件数を半分にして送り直す。この間は失敗にしない
@@ -350,10 +353,12 @@ async function exchange(signal: AbortSignal, epoch: number): Promise<SyncOutcome
 
 /**
  * 同期を 1 回行う。同期中か、オフラインなら始めない。終わり方を返す。
- * 失敗は同期の状態に反映し、画面を移らない（Design Doc 6.10）
+ * 失敗は同期の状態に反映し、画面を移らない（Design Doc 6.10）。
+ * リハーサルモードの間は、同期しない（FR-50）。定期の同期、オンラインの検知、手動の同期のどれも、ここで止まる。
+ * 本番の未送信の記録の送信も、ほかの端末の記録と配布物の受信も、通常モードに戻すまで待つ
  */
 export async function runSync(): Promise<SyncOutcome> {
-  if (rt.failed || rt.db === null || syncInFlight.value || !online.value) return "skipped";
+  if (rt.failed || rt.db === null || syncInFlight.value || !online.value || rehearsal.value) return "skipped";
   const epoch = rt.loginEpoch;
   const controller = new AbortController();
   abort = controller;
@@ -379,7 +384,7 @@ export async function runSync(): Promise<SyncOutcome> {
     lastSyncFailed.value = false;
     nextSyncAt = time + SYNC_INTERVAL_MS;
     lastSyncAt.value = time;
-    void enqueue((db) => writeMeta(db, "lastSyncAt", time));
+    void enqueue((store) => store.writeMeta("lastSyncAt", time));
   } else {
     failures++;
     lastSyncFailed.value = true;

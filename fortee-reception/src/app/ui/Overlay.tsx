@@ -3,10 +3,13 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import {
   backToReceptionList,
   type CancelReason,
+  cancelQrCheckin,
   chooseAutoReception,
   chooseReception,
   closeOverlay,
   confirmCancel,
+  confirmModeChange,
+  confirmQrCheckin,
   confirmReceptionChange,
   confirmSearchCheckin,
   confirmSuggestedSwitch,
@@ -18,15 +21,18 @@ import {
   confirmedReception,
   hasUnsent,
   lastSyncFailed,
+  type ModeChange,
   online,
   operationView,
   type OperationView,
   overlay,
+  qrConfirmView,
   REASON_TEXT_MAX,
   reasonTextOf,
   receptionChangePreview,
   receptionChoices,
   referenceHtml,
+  rehearsal,
   resultView,
   screen,
 } from "../state/index.ts";
@@ -50,16 +56,26 @@ const PULL_CLOSE_PX = 72;
 type Model =
   | { id: "S02-M1"; step: "list"; manual: boolean; choices: ReturnType<typeof receptionChoices> }
   | { id: "S02-M1"; step: "confirm"; reset: boolean; name: string | null; outOfPeriod: boolean }
+  | ({ id: "S03-D1" } & ReturnType<typeof qrConfirmView>)
+  | { id: "S04-D1" }
   | { id: "S04-M1"; html: string | null }
   | { id: "S04-M2"; name: string; outOfPeriod: boolean }
   | { id: "S06-M1"; userName: string; ticketNos: string[]; receptionName: string }
   | { id: "S08-M1"; userName: string; receptionName: string | null; cancellable: OperationView["cancellable"] }
-  | { id: "S09-D1"; unsent: boolean; status: "offline" | "failed" | null };
+  | { id: "S09-D1"; unsent: boolean; status: "offline" | "failed" | null }
+  | { id: "S09-D2"; change: ModeChange };
 
-/** 開いているシートかダイアログに出す値。開いていないか、出す値を作れなければ null */
+/**
+ * 開いているシートかダイアログに出す値。開いていないか、出す値を作れなければ null。
+ * 通常受付の確認（S03-D1）は、シートの状態（overlay）ではなく、ホームの状態（confirming）から出す
+ */
 function currentModel(): Model | null {
   const sheet = overlay.value;
-  if (sheet === null) return null;
+  if (sheet === null) {
+    const current = screen.value;
+    if (current.id !== "home" || current.mode.kind !== "confirming") return null;
+    return { id: "S03-D1", ...qrConfirmView(current.mode.ticket) };
+  }
   switch (sheet.id) {
     case "S02-M1": {
       if (sheet.step.kind === "list") {
@@ -68,6 +84,8 @@ function currentModel(): Model | null {
       const preview = receptionChangePreview(sheet.step.change);
       return { id: "S02-M1", step: "confirm", reset: sheet.step.change.kind === "reset", ...preview };
     }
+    case "S04-D1":
+      return { id: "S04-D1" };
     case "S04-M1":
       return { id: "S04-M1", html: referenceHtml() };
     case "S04-M2": {
@@ -101,8 +119,12 @@ function currentModel(): Model | null {
       // ヘッダは「同期中」「再ログインが必要」を同期の失敗より先に出すので、ヘッダの状態で選ぶと、失敗の後の
       // 再試行の間と、再ログインが必要の間に、警告が出ない（FR-37）
       const status = !online.value ? "offline" : lastSyncFailed.value ? "failed" : null;
-      return { id: "S09-D1", unsent: hasUnsent.value, status };
+      // リハーサルモードの間は、端末の記録（本番の記録）を読み込んでいないので、未同期の記録があるかが分からない。
+      // あるものとして警告する
+      return { id: "S09-D1", unsent: hasUnsent.value || rehearsal.value, status };
     }
+    case "S09-D2":
+      return { id: "S09-D2", change: sheet.change };
   }
 }
 
@@ -124,10 +146,12 @@ type ModalProps = {
   pullable?: boolean;
   /** 参考情報（S04-M1）。画面の下半分程度の高さで開く */
   half?: boolean;
+  /** 戻る操作と Esc キーで行うこと。省くと、シートを閉じる。通常受付の確認（S03-D1）は「やめる」にする */
+  onDismiss?: () => void;
   children: ComponentChildren;
 };
 
-function Modal({ kind, closing, pullable, half, children }: ModalProps) {
+function Modal({ kind, closing, pullable, half, onDismiss = closeOverlay, children }: ModalProps) {
   const ref = useRef<HTMLDialogElement>(null);
   /** この部品が自分で close() を呼んだ。close イベントを、利用者の操作と区別する */
   const closedByHost = useRef(false);
@@ -159,18 +183,18 @@ function Modal({ kind, closing, pullable, half, children }: ModalProps) {
     // S02-M1 の確認では、閉じずに一覧に戻る。確定の処理が進んでいる間は、閉じない。閉じる動きの途中も、何もしない
     if (confirmStep || busy.value || closing) {
       event.preventDefault();
-      if (!closing) closeOverlay();
+      if (!closing) onDismiss();
     }
   };
 
   // ブラウザが閉じた（cancel を止められなかった場合を含む）。状態も閉じる
   const onClose = () => {
     if (closedByHost.current || closing) return;
-    closeOverlay();
+    onDismiss();
     // S02-M1 の確認で閉じられたときは、一覧に戻った後、もう 1 回で閉じる
     if (overlay.value?.id === "S02-M1") closeOverlay();
     // 確定の処理が進んでいて閉じられなかったら、開き直す
-    if (overlay.value !== null) ref.current?.showModal();
+    if (currentModel() !== null) ref.current?.showModal();
   };
 
   const onPointerDown = (event: PointerEvent) => {
@@ -487,8 +511,89 @@ function LogoutConfirm({ model }: { model: Extract<Model, { id: "S09-D1" }> }) {
   );
 }
 
+// ───────── S09-D2 高速受付とリハーサルモードの切り替えの確認 ─────────
+
+const MODE_CHANGE: Record<ModeChange, { lines: string[]; confirmLabel: string }> = {
+  rehearsalOn: { lines: ["リハーサルモードに切り替えますか？"], confirmLabel: "切り替える" },
+  rehearsalOff: { lines: ["通常モードに戻しますか？"], confirmLabel: "戻す" },
+  fastCheckinOn: {
+    lines: [
+      "高速受付に切り替えますか？",
+      "高速受付にすると通常時とは異なりQR読み取り成功後、即座に受け付けが完了します。",
+    ],
+    confirmLabel: "切り替える",
+  },
+};
+
+function ModeChangeConfirm({ model }: { model: Extract<Model, { id: "S09-D2" }> }) {
+  const armed = useArmed(`S09-D2:${model.change}`);
+  return <ConfirmBody {...MODE_CHANGE[model.change]} armed={armed} onConfirm={() => void confirmModeChange()} />;
+}
+
+// ───────── S03-D1 通常受付の確認、S04-D1 リハーサルモードの知らせ ─────────
+
+/**
+ * 読み取ったチケットの持ち主を出して、受付を続けるかを確かめる。読み取りのたびに出るので、注意を要する操作の
+ * 確認（画面設計書 2.5）とは違い、確定は通常の主ボタンにして、開いた直後から押せる
+ */
+function QrCheckinConfirm({ model }: { model: Extract<Model, { id: "S03-D1" }> }) {
+  return (
+    <>
+      <div class="flex flex-col gap-1">
+        <p class="text-1 leading-9 font-bold wrap-anywhere">{model.userName}</p>
+        {model.name !== "" && <p class="font-bold text-ink-sub wrap-anywhere">{model.name}</p>}
+        <p class="text-5 text-ink-sub wrap-anywhere">
+          {model.ticketNo} {model.ticketType}
+        </p>
+      </div>
+      <p>この人の受付を続けますか？</p>
+      <div class="flex flex-col gap-3 pt-2">
+        {/* 音を鳴らせる状態にし直すので、タップの処理の中で呼ぶ（画面設計書 2.4） */}
+        <Button kind="primary" disabled={busy.value} onClick={() => void confirmQrCheckin()}>
+          続ける
+        </Button>
+        <Button kind="outline" disabled={busy.value} onClick={cancelQrCheckin}>
+          やめる
+        </Button>
+      </div>
+    </>
+  );
+}
+
+function RehearsalNotice() {
+  return (
+    <>
+      <p class="text-2 font-bold">リハーサルモードです</p>
+      <p class="text-5 text-ink-sub">この受付は記録に残りません</p>
+      <div class="pt-2">
+        <Button kind="primary" onClick={closeOverlay}>
+          OK
+        </Button>
+      </div>
+    </>
+  );
+}
+
 function Content({ model, closing }: { model: Model; closing: boolean }) {
   switch (model.id) {
+    case "S03-D1":
+      return (
+        <Modal kind="dialog" closing={closing} onDismiss={cancelQrCheckin}>
+          <QrCheckinConfirm model={model} />
+        </Modal>
+      );
+    case "S04-D1":
+      return (
+        <Modal kind="dialog" closing={closing}>
+          <RehearsalNotice />
+        </Modal>
+      );
+    case "S09-D2":
+      return (
+        <Modal kind="dialog" closing={closing}>
+          <ModeChangeConfirm model={model} />
+        </Modal>
+      );
     case "S02-M1":
       // 一覧と確認は、同じ <dialog> の中身を切り替える。確認では、つまみを出さず、下に引いても閉じない
       return (

@@ -3,7 +3,7 @@ import { midOperation } from "../state/derived.ts";
 import { overlay, screen, storagePersisted, updateWaiting } from "../state/model.ts";
 import { abortSync, distributionQueued, flushHeldDistribution, syncBusy } from "./sync.ts";
 import { refreshReception } from "./reception.ts";
-import { queueIdle, rt } from "./runtime.ts";
+import { closeDatabase, queueIdle, rt } from "./runtime.ts";
 
 // Service Worker の更新と、再読み込み（Design Doc 6.11、6.13）。IndexedDB の versionchange を受けたときの
 // 再読み込み（Design Doc 6.3）も、同じ扱いにする。
@@ -42,8 +42,7 @@ function reloadNow(): void {
   reloading = true;
   // 進行中の同期と取得は、待たずに中断する。確定していないトランザクションは破棄される
   abortSync();
-  rt.db?.close();
-  rt.db = null;
+  closeDatabase();
   rt.ports.platform.reload();
 }
 

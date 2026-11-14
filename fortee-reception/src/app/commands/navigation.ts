@@ -4,7 +4,7 @@ import { candidateView, defaultSelection } from "../state/views.ts";
 import { refreshOfflineReady, refreshStoragePersisted } from "./app-shell.ts";
 import { backToReceptionList } from "./reception.ts";
 import { go, rt, setOverlay } from "./runtime.ts";
-import { leaveScan, stopScan } from "./scan.ts";
+import { cancelQrCheckin, leaveScan, stopScan } from "./scan.ts";
 import { backFromLogin, startRelogin } from "./session.ts";
 import { runSync } from "./sync.ts";
 
@@ -103,8 +103,9 @@ export function goBack(): void {
   const current = screen.value;
   switch (current.id) {
     case "home":
-      // 読み取り中は「終了」と同じ。結果では何もしない
+      // 読み取り中は「終了」と同じ。通常受付の確認は「やめる」と同じ。結果では何もしない
       if (current.mode.kind === "scanning") stopScan();
+      else if (current.mode.kind === "confirming") cancelQrCheckin();
       break;
     case "S05":
     case "S07":
@@ -135,12 +136,13 @@ export function handleBack(): void {
 }
 
 /**
- * ヘッダの同期の状態のタップと、S09 の「今すぐ同期」（画面設計書 2.3）。同期中とオフラインでは何もしない。
+ * ヘッダの同期の状態のタップと、S09 の「今すぐ同期」（画面設計書 2.3）。同期の停止、同期中、オフラインでは何もしない。
  * 再ログインが必要なら S01 で再ログインし、ほかは同期する（同期の失敗では再試行）
  */
 export function tapSync(): void {
   if (rt.db === null) return;
   switch (syncStatus.value) {
+    case "paused":
     case "syncing":
     case "offline":
       break;

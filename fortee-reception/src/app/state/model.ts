@@ -3,7 +3,7 @@ import type { PublishedConfig, Reception } from "../../core/config.ts";
 import type { Judgement, JudgeInput } from "../../core/judge.ts";
 import type { CheckinRecord } from "../../core/record.ts";
 import type { RecordOperator } from "../../core/records.ts";
-import type { Snapshot } from "../../core/snapshot.ts";
+import type { Snapshot, Ticket } from "../../core/snapshot.ts";
 import type { SyncCursor } from "../../core/sync.ts";
 
 // 状態（Design Doc 6.2）。画面（ui）は、ここの Signal と、derived.ts、views.ts の導出を読む。
@@ -17,6 +17,11 @@ export type CameraState = "requesting" | "streaming" | "denied";
 export type HomeMode =
   | { kind: "idle" }
   | { kind: "scanning"; camera: CameraState }
+  /**
+   * 通常受付の確認（S03-D1。FR-49）。読み取ったチケットを持つ。カメラは止めてある。
+   * 画面は、読み取り中（S03）の見た目に、ダイアログを重ねて描く
+   */
+  | { kind: "confirming"; ticket: Ticket }
   /** 見つからない（FR-17）。判定を呼ばずに移る。token は、直後の読み直しを無視する照合に使う */
   | { kind: "notFound"; token: string }
   | {
@@ -59,15 +64,21 @@ export type Screen =
 /** S02-M1 の確認で、確定すること */
 export type ReceptionChange = { kind: "switch"; receptionId: string } | { kind: "reset" };
 
+/** S09-D2 の確認で、確定すること。高速受付をオフに戻すのは、確認しない */
+export type ModeChange = "rehearsalOn" | "rehearsalOff" | "fastCheckinOn";
+
 export type Overlay =
   | null
   | { id: "S02-M1"; step: { kind: "list" } | { kind: "confirm"; change: ReceptionChange } }
+  /** 「リハーサルモードです」 */
+  | { id: "S04-D1" }
   | { id: "S04-M1" }
   | { id: "S04-M2" }
   | { id: "S06-M1" }
   /** 選んだチケットと理由は、シートの中の入力として画面が持ち、確定のときに操作に渡す */
   | { id: "S08-M1" }
-  | { id: "S09-D1" };
+  | { id: "S09-D1" }
+  | { id: "S09-D2"; change: ModeChange };
 
 export const screen = signal<Screen>({ id: "boot" });
 export const overlay = signal<Overlay>(null);
@@ -75,7 +86,7 @@ export const overlay = signal<Overlay>(null);
 /** 読み取りを受理してから結果を出すまで（Design Doc 6.13）。受付操作の途中に含める */
 export const judging = signal(false);
 
-/** 確定の処理が進んでいる。S04-M2、S06-M1、S08-M1、S02-M1、S09-D1 の確定ボタンを押せなくする */
+/** 確定の処理が進んでいる。S04-M2、S06-M1、S08-M1、S02-M1、S03-D1、S09-D1、S09-D2 の確定ボタンを押せなくする */
 export const busy = signal(false);
 
 // ───────── 永続の状態（IndexedDB から読み戻す） ─────────
@@ -90,15 +101,24 @@ export const deviceId = signal<string | null>(null);
 export const operator = signal<RecordOperator | null>(null);
 export const soundEnabled = signal(true);
 export const vibrationEnabled = signal(true);
+/** 高速受付か。偽（通常受付）なら、QR の読み取りでチェックインする前に、S03-D1 で確認する */
+export const fastCheckin = signal(false);
+/**
+ * リハーサルモードか。オン・オフだけを保存し、再読み込みの後も続ける。ログアウトで通常モードに戻る。
+ * リハーサルモードの間は、記録（records）をメモリの記憶域に置き（storage/store.ts）、同期しない
+ */
+export const rehearsal = signal(false);
 export const cursor = signal<SyncCursor | null>(null);
 export const override = signal<ReceptionOverride | null>(null);
 /** 最終同期の時刻。同期と、その同期が必要にした配布物の取得の両方が成功した時刻 */
 export const lastSyncAt = signal<number | null>(null);
 export const config = signal<PublishedConfig | null>(null);
 export const snapshots = signal<readonly Snapshot[]>([]);
+/** 記憶域にある記録。通常モードでは端末の記録、リハーサルモードではその間に作った記録（storage/store.ts） */
 export const records = signal<readonly DeviceRecord[]>([]);
 
 // ───────── 揮発の状態 ─────────
+
 
 /** 現在時刻。1 秒ごとに更新する */
 export const now = signal(0);

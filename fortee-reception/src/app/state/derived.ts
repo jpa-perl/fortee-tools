@@ -19,6 +19,7 @@ import {
   override,
   type ReceptionOverride,
   records,
+  rehearsal,
   type Screen,
   screen,
   snapshots,
@@ -84,13 +85,14 @@ export const effectiveReception = computed<{ reception: Reception | null; manual
 });
 
 /**
- * 受付操作の途中か（Design Doc 6.2、画面設計書 2.7）。ホームの結果（見つからないを含む）、S06、S08 を
- * 表示している間と、シートかダイアログを表示している間、読み取りを受理してから結果を出すまで
+ * 受付操作の途中か（Design Doc 6.2、画面設計書 2.7）。ホームの結果（見つからないを含む）と通常受付の確認、
+ * S06、S08 を表示している間と、シートかダイアログを表示している間、読み取りを受理してから結果を出すまで
  */
 export function isMidOperation(current: Screen, sheet: Overlay, accepting: boolean): boolean {
   if (accepting || sheet !== null) return true;
   if (current.id === "S06" || current.id === "S08") return true;
-  return current.id === "home" && (current.mode.kind === "result" || current.mode.kind === "notFound");
+  if (current.id !== "home") return false;
+  return current.mode.kind === "result" || current.mode.kind === "notFound" || current.mode.kind === "confirming";
 }
 
 export const midOperation = computed(() => isMidOperation(screen.value, overlay.value, judging.value));
@@ -101,6 +103,7 @@ export const hasUnsent = computed(() => records.value.some((record) => !record.s
 /** ヘッダに出す同期の状態（画面設計書 2.3）。S09-D1 の警告も、この 1 つの状態で選ぶ */
 export const syncStatus = computed(() =>
   pickSyncStatus({
+    paused: rehearsal.value,
     syncing: syncInFlight.value,
     offline: !online.value,
     needsLogin: needsLogin.value,

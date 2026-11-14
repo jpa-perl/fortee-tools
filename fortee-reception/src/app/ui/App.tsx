@@ -2,6 +2,7 @@ import { Component, type ComponentChildren } from "preact";
 import { reportRenderError } from "../commands/index.ts";
 import { screen } from "../state/index.ts";
 import { OverlayHost } from "./Overlay.tsx";
+import { RehearsalBand } from "./RehearsalBand.tsx";
 import { ErrorScreen, Guide } from "./screens/Guide.tsx";
 import { History, OperationDetail } from "./screens/History.tsx";
 import { Home } from "./screens/Home.tsx";
@@ -57,6 +58,7 @@ export function App() {
   return (
     <ErrorBoundary>
       <CurrentScreen />
+      <RehearsalBand />
       {screen.value.id !== "S99" && <OverlayHost />}
     </ErrorBoundary>
   );
