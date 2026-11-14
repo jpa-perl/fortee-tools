@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { TICKET_TOKEN_PATTERN } from "../core/fields.ts";
 import { type Snapshot, snapshotSchema } from "../core/snapshot.ts";
 import { CliError } from "./errors.ts";
 import type { Target } from "./target.ts";
@@ -55,4 +56,39 @@ export async function readSnapshot(target: Pick<Target, "workDir">, eventId: str
     throw new CliError(`スナップショット ${path} を読めません`);
   }
   return parseSnapshot(text, eventId, `スナップショット ${path}`);
+}
+
+/**
+ * profile_url_token の補正ファイル（Design Doc 8.3）。プロフィール QR の画像を複数の行が共有するイベントについて、
+ * 管理者が .work/<環境名>/profile-url-tokens/{eventId}.json に、チケットトークン → profile_url_token の対応を書く。
+ * トークンを含むので、スナップショットと同じく、コミットしない
+ */
+export function profileUrlTokensPath(target: Pick<Target, "workDir">, eventId: string): string {
+  return join(target.workDir, "profile-url-tokens", `${eventId}.json`);
+}
+
+/** 補正ファイルを読む。なければ、空の対応 */
+export async function readProfileUrlTokens(target: Pick<Target, "workDir">, eventId: string): Promise<Map<string, string>> {
+  const path = profileUrlTokensPath(target, eventId);
+  let text: string;
+  try {
+    text = await readFile(path, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return new Map();
+    throw new CliError(`補正ファイル ${path} を読めません`);
+  }
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    throw new CliError(`補正ファイル ${path} を JSON として読めません`);
+  }
+  // 値は出さない。形だけを確かめる
+  const entries = typeof raw === "object" && raw !== null && !Array.isArray(raw) ? Object.entries(raw) : null;
+  if (entries === null || !entries.every(([key, value]) => TICKET_TOKEN_PATTERN.test(key) && typeof value === "string" && TICKET_TOKEN_PATTERN.test(value))) {
+    throw new CliError(
+      `補正ファイル ${path} が、チケットトークン（英数字 32 文字）を鍵、profile_url_token（英数字 32 文字）を値とする JSON のオブジェクトではありません`,
+    );
+  }
+  return new Map(entries as [string, string][]);
 }

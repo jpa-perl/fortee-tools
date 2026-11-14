@@ -1,4 +1,5 @@
 import type { ConfigBody } from "../../core/config-file.ts";
+import { TICKET_TOKEN_PATTERN } from "../../core/fields.ts";
 import { buildSnapshotIndex, type Snapshot, type Ticket } from "../../core/snapshot.ts";
 import { buildTemplateContext, renderTemplate } from "../../core/template.ts";
 import { CliError } from "../errors.ts";
@@ -9,13 +10,19 @@ import { readSnapshot } from "../workdir.ts";
 // preview（Design Doc 8.1、8.7、FR-46）。作業ディレクトリのスナップショットと設定から、参加者を 1 人指定して、
 // 参考情報テンプレートを描画する。受付アプリの S04-M1 と同じ core の関数で文脈を作る（Design Doc 4.6）。
 // D1 と KV には触れない。CLI の手元には記録がないので、チケットの状態は --done で指定する。
-// 描画の結果は参加者の情報を含む。標準出力にだけ出す。
+// 描画の結果は HTML で、受付アプリが表示するものと同じ文字列である（変数の値はエスケープ済み）。
+// 参加者の情報を含む。標準出力にだけ出す。
 
 export type PreviewOptions = {
   /** イベントの key か id */
   event: string;
-  /** そのイベントの中のチケット番号 */
-  ticket: string;
+  /** そのイベントの中のチケット番号。ticketToken とどちらか一方を指定する */
+  ticket?: string | undefined;
+  /**
+   * チケットトークン（Ticket url の末尾の英数字 32 文字）。fortee の採番でチケット番号が重複した参加者は、
+   * チケット番号では 1 人に決まらないので、こちらで指定する
+   */
+  ticketToken?: string | undefined;
   /** 現在の受付の id。省くと、受付なしの文脈で描画する */
   reception?: string | undefined;
   /** 済みにするチケット。「<イベントの key か id>:<チケット番号>」 */
@@ -31,6 +38,13 @@ export type PreviewDeps = {
 
 export async function preview(target: Target, config: ConfigBody, options: PreviewOptions, deps: PreviewDeps): Promise<void> {
   const event = eventOf(config, options.event, "--event");
+
+  if ((options.ticket === undefined) === (options.ticketToken === undefined)) {
+    throw new CliError("--ticket <チケット番号> か --ticket-token <チケットトークン> の、どちらか一方を指定してください");
+  }
+  if (options.ticketToken !== undefined && !TICKET_TOKEN_PATTERN.test(options.ticketToken)) {
+    throw new CliError("--ticket-token は、英数字 32 文字で指定してください（CSV の Ticket url の末尾）");
+  }
 
   const reception =
     options.reception === undefined ? null : (config.receptions.find((candidate) => candidate.id === options.reception) ?? undefined);
@@ -54,18 +68,32 @@ export async function preview(target: Target, config: ConfigBody, options: Previ
   const index = buildSnapshotIndex(snapshots, config.events.map((candidate) => candidate.id));
   const allTickets = [...index.byToken.values()];
 
-  // チケット番号は、イベントの中でしか一意でない（constraints.md 7 章）ので、イベントを添えて引く
+  // チケット番号は、イベントを添えて引く。イベントの中でも、fortee の採番で重複することがある（Design Doc 8.3）ので、
+  // 複数あれば、どれを描画するかを選ばずに止める。その参加者は、チケットトークンで指定する
   const find = (eventId: string, ticketNo: string): Ticket[] =>
     allTickets.filter((ticket) => ticket.eventId === eventId && ticket.ticketNo === ticketNo);
 
-  const found = find(event.id, options.ticket);
-  const ticket = found[0];
-  if (ticket === undefined || found.length !== 1) {
-    throw new CliError(
-      found.length === 0
-        ? `--ticket の "${options.ticket}" は、${describeEvent(event)} のスナップショットにありません`
-        : `--ticket の "${options.ticket}" が、${describeEvent(event)} のスナップショットに ${found.length} 枚あります`,
-    );
+  let ticket: Ticket;
+  if (options.ticketToken !== undefined) {
+    // トークンは参加者の情報なので、誤りの文言に出さない
+    const byToken = index.byToken.get(options.ticketToken);
+    if (byToken === undefined || byToken.eventId !== event.id) {
+      throw new CliError(`--ticket-token のチケットは、${describeEvent(event)} のスナップショットにありません`);
+    }
+    ticket = byToken;
+  } else {
+    const ticketNo = options.ticket ?? "";
+    const found = find(event.id, ticketNo);
+    const only = found[0];
+    if (only === undefined || found.length !== 1) {
+      throw new CliError(
+        found.length === 0
+          ? `--ticket の "${ticketNo}" は、${describeEvent(event)} のスナップショットにありません`
+          : `--ticket の "${ticketNo}" が、${describeEvent(event)} のスナップショットに ${found.length} 枚あります。` +
+            "--ticket-token <チケットトークン>（CSV の Ticket url の末尾の英数字 32 文字）で指定してください",
+      );
+    }
+    ticket = only;
   }
   const tickets = index.byUser.get(ticket.userName) ?? [ticket];
 
@@ -102,5 +130,5 @@ export async function preview(target: Target, config: ConfigBody, options: Previ
   if (!rendered.ok) {
     throw new CliError(`テンプレートを描画できません\n${rendered.errors.map((error) => `  ${error.message}`).join("\n")}`);
   }
-  deps.out(rendered.text);
+  deps.out(rendered.html);
 }

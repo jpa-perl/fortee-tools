@@ -60,6 +60,10 @@ export type Meta = {
   operator: RecordOperator | null;
   sound: boolean;
   vibration: boolean;
+  /** 高速受付。QR の読み取りの後に、確認（S03-D1）を挟まずにチェックインする */
+  fastCheckin: boolean;
+  /** リハーサルモード。記録を端末にもサーバにも保存しない。保存するのは、このオン・オフだけである */
+  rehearsal: boolean;
   /** 受信位置。初回は null */
   cursor: SyncCursor | null;
   override: ReceptionOverride | null;
@@ -209,6 +213,8 @@ export async function readMeta(db: Database, newDeviceId: () => string): Promise
     operator: optional(raw.get("operator"), nullable(isOperator), null, "operator"),
     sound: optional(raw.get("sound"), isBoolean, true, "sound"),
     vibration: optional(raw.get("vibration"), isBoolean, true, "vibration"),
+    fastCheckin: optional(raw.get("fastCheckin"), isBoolean, false, "fastCheckin"),
+    rehearsal: optional(raw.get("rehearsal"), isBoolean, false, "rehearsal"),
     cursor: optional(raw.get("cursor"), nullable(isCursor), null, "cursor"),
     override: optional(raw.get("override"), nullable(isOverride), null, "override"),
     lastSyncAt: optional(raw.get("lastSyncAt"), nullable(isInt), null, "lastSyncAt"),
@@ -230,6 +236,14 @@ function isStoredRecord(value: unknown): value is StoredRecord {
   return checkinRecordSchema.safeParse(value).success;
 }
 
+/** 読み出した記録の形を確かめる。合わなければ例外を投げる */
+function checkedRecords(records: readonly unknown[]): StoredRecord[] {
+  for (const record of records) {
+    if (!isStoredRecord(record)) throw new StorageFormatError("records");
+  }
+  return records as StoredRecord[];
+}
+
 export type StoredData = {
   config: PublishedConfig | null;
   snapshots: Snapshot[];
@@ -247,10 +261,17 @@ export async function readData(db: Database): Promise<StoredData> {
   for (const snapshot of snapshots) {
     if (!snapshotSchema.safeParse(snapshot).success) throw new StorageFormatError("snapshots");
   }
-  for (const record of records) {
-    if (!isStoredRecord(record)) throw new StorageFormatError("records");
-  }
-  return { config, snapshots, records };
+  return { config, snapshots, records: checkedRecords(records) };
+}
+
+/** 記録だけを読む。記憶域の差し替え（store.ts）で、記録を読み直すのに使う */
+export async function readRecords(db: Database): Promise<StoredRecord[]> {
+  return checkedRecords(await db.getAll("records"));
+}
+
+/** 受付の手動の上書きだけを読む。記憶域の差し替え（store.ts）で、読み直すのに使う */
+export async function readOverride(db: Database): Promise<ReceptionOverride | null> {
+  return optional(await db.get("meta", "override"), nullable(isOverride), null, "override");
 }
 
 /**
@@ -338,13 +359,13 @@ export async function replaceDistribution(
 }
 
 /**
- * ログアウトの消去（Design Doc 6.3、FR-37）。meta の端末 ID、音と振動の設定、ログインの番号を除いて、
- * すべてのストアを消す。ログインの番号は、上げた値を書く
+ * ログアウトの消去（Design Doc 6.3、FR-37）。meta の端末 ID、音と振動と高速受付の設定、ログインの番号を除いて、
+ * すべてのストアを消す。ログインの番号は、上げた値を書く。リハーサルモードは消えて、通常モードに戻る
  */
 export async function clearForLogout(db: Database, loginEpoch: number): Promise<void> {
   const tx = db.transaction(["meta", "config", "snapshots", "records"], "readwrite");
   const meta = tx.objectStore("meta");
-  const kept: string[] = ["deviceId", "sound", "vibration"] satisfies MetaKey[];
+  const kept: string[] = ["deviceId", "sound", "vibration", "fastCheckin"] satisfies MetaKey[];
   const stale = (await meta.getAllKeys()).filter((key) => !kept.includes(key));
   await finish(tx, [
     ...stale.map((key) => meta.delete(key)),

@@ -70,6 +70,8 @@ describe("端末内の記憶域（Design Doc 6.3）", () => {
       operator: null,
       sound: true,
       vibration: true,
+      fastCheckin: false,
+      rehearsal: false,
       cursor: null,
       override: null,
       lastSyncAt: null,
@@ -140,11 +142,13 @@ describe("端末内の記憶域（Design Doc 6.3）", () => {
     db.close();
   });
 
-  it("ログアウトでは、端末 ID、音と振動の設定、ログインの番号を除いて、すべて消す", async () => {
+  it("ログアウトでは、端末 ID、音と振動と高速受付の設定、ログインの番号を除いて、すべて消す", async () => {
     const db = await open();
     const { deviceId } = await readMeta(db, newId);
     await writeMeta(db, "operator", { operatorId: "1", operatorName: "staff" });
     await writeMeta(db, "sound", false);
+    await writeMeta(db, "fastCheckin", true);
+    await writeMeta(db, "rehearsal", true);
     await writeMeta(db, "cursor", { generation: "g", seq: 1 });
     await writeMeta(db, "lastSyncAt", 1);
     await replaceDistribution(db, config, snapshotsOf([ticket({ eventId: MAIN, userName: "a" })]), { clearOverride: false });
@@ -156,6 +160,9 @@ describe("端末内の記憶域（Design Doc 6.3）", () => {
       operator: null,
       sound: false,
       vibration: true,
+      // 高速受付は残す。リハーサルモードは消えて、通常モードに戻る
+      fastCheckin: true,
+      rehearsal: false,
       cursor: null,
       override: null,
       lastSyncAt: null,

@@ -54,6 +54,8 @@
   --color-on-camera: #ffffff; /* 映像に重ねる読み取り枠、バナー、アイコン */
   --color-notice: #15181c; /* 知らせの地 */
   --color-on-notice: #ffffff;
+  --color-rehearsal: rgb(242 193 46 / 0.6); /* リハーサルモードの帯の縞（注意の色を透かす） */
+  --color-rehearsal-gap: rgb(21 24 28 / 0.12); /* 縞のあいだ */
   --color-scrim: rgb(0 0 0 / 0.4); /* シートとダイアログの後ろの画面を覆う色 */
   --color-shadow: rgb(0 0 0 / 0.25); /* 画面に重なるものの影 */
 
@@ -96,6 +98,13 @@
 @custom-variant short (@media (height < 560px));
 
 @layer base {
+  /*
+   * 画面の端で引いたときに、ページごと動かないようにする。表示領域に効くのは、根要素に書いた指定だけである。
+   * body だけに書くと、iOS のホーム画面のアプリでは、ヘッダの上に地の色がのぞく
+   */
+  html {
+    overscroll-behavior: none;
+  }
   body {
     background-color: var(--color-ground);
     color: var(--color-ink);
@@ -242,6 +251,59 @@
   .sheet-half {
     min-height: 50dvh;
   }
+  /*
+    参考情報の描画結果（S04-M1）。テンプレートに書いた HTML の見た目を定める。
+    リセットが見出し、リスト、リンクの見た目を消すので、ここで読める形に戻す。
+    見出しの段（h1〜h6）は区別せず、どれも同じ見た目にする。文字サイズは 6 段（画面設計書 2.10）から選ぶ
+  */
+  .reference {
+    line-height: 1.6;
+  }
+  .reference :is(h1, h2, h3, h4, h5, h6) {
+    margin-block: calc(var(--spacing) * 6) calc(var(--spacing) * 2);
+    padding-bottom: calc(var(--spacing) * 1);
+    border-bottom: 1px solid var(--color-divider);
+    font-size: var(--text-3);
+    font-weight: var(--font-weight-bold);
+  }
+  .reference :is(p, ul, ol, dl, table, pre, blockquote) {
+    margin-block: calc(var(--spacing) * 2);
+  }
+  .reference > :first-child {
+    margin-top: 0;
+  }
+  .reference > :last-child {
+    margin-bottom: 0;
+  }
+  .reference :is(ul, ol) {
+    padding-inline-start: calc(var(--spacing) * 6);
+  }
+  .reference ul {
+    list-style: disc;
+  }
+  .reference ol {
+    list-style: decimal;
+  }
+  .reference li {
+    margin-block: calc(var(--spacing) * 1);
+  }
+  /* 入れ子のリストは、項目の続きとして詰めて出す。印を変えて、段を見分けられるようにする */
+  .reference li > :is(ul, ol) {
+    margin-block: calc(var(--spacing) * 1) 0;
+  }
+  .reference li > ul {
+    list-style: circle;
+  }
+  .reference :is(b, strong, dt, th) {
+    font-weight: var(--font-weight-bold);
+  }
+  .reference small {
+    color: var(--color-ink-sub);
+    font-size: var(--text-5);
+  }
+  .reference a {
+    text-decoration: underline;
+  }
   .dialog-box {
     inset: 0;
     width: calc(100% - var(--spacing) * 12);
@@ -316,6 +378,44 @@
     from {
       background-color: transparent;
     }
+  }
+
+  /*
+   * ヘッダのない画面で、ステータスバーの裏を塗る帯（ScreenFrame.tsx）。iOS 27 が画面の上端に重ねるぼかしを避ける。
+   * 塗るのは安全領域だけで、押せる要素には重ならない。安全領域のない端末では、高さが 0 になる
+   */
+  .status-bar-fill {
+    position: fixed;
+    inset: 0 0 auto 0;
+    height: env(safe-area-inset-top);
+    pointer-events: none;
+  }
+
+  /*
+   * リハーサルモードの帯（RehearsalBand.tsx）。ヘッダ（安全領域と、高さ 56px）に重ねて、斜めの縞を透かして出す。
+   * 高さは、ヘッダの高さ（Header.tsx の h-14）に合わせてある。ヘッダの高さを変えるときは、ここも変える。
+   * iOS 27.2 のシミュレータで、ホーム画面に追加したアプリの上端を確かめた。不透明でない fixed の帯をヘッダに
+   * 重ねても、上端のぼかし（ScreenFrame.tsx）は戻らない。ステータスバーの裏は、ヘッダの色ではなく、
+   * 画面の地の色になる。
+   * 押す操作は下のヘッダに通し、帯の中の「✗」だけが受け取る。シートとダイアログは最上位のレイヤに出るので、
+   * 帯より手前になる
+   */
+  .rehearsal-band {
+    position: fixed;
+    inset: 0 0 auto 0;
+    /* ヘッダのすぐ下の知らせ（Notice.tsx）と、S03 のバナーは z-index が 10 で、帯の札より手前に出る */
+    z-index: 5;
+    height: calc(env(safe-area-inset-top) + var(--spacing) * 14);
+    padding-top: env(safe-area-inset-top);
+    pointer-events: none;
+    background-image: repeating-linear-gradient(
+      -45deg,
+      var(--color-rehearsal) 0 12px,
+      var(--color-rehearsal-gap) 12px 24px
+    );
+  }
+  .rehearsal-band button {
+    pointer-events: auto;
   }
 
   /* 安全領域。画面の上部固定と下部固定に付ける */

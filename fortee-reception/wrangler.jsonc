@@ -29,21 +29,22 @@
   // Workers Logs（Design Doc 7.6、バックエンド 8.1）
   "observability": { "enabled": true },
 
-  // カンファレンスの環境は、環境名（fortee のスラッグ）ごとにここへ足す（dev-setup 5 章の 4）。
+  // カンファレンスの環境は、環境名（fortee のスラッグ）ごとにここへ足す（production-setup 3.4）。
   // d1_databases と kv_namespaces は最上位から引き継がれないので、環境ごとに書く。
   //
-  // "yapc-tokyo-2026": {
-  //   "name": "checkin-yapc-tokyo-2026",
-  //   "account_id": "<アカウント ID>",
-  //   "d1_databases": [
-  //     {
-  //       "binding": "DB",
-  //       "database_name": "checkin-yapc-tokyo-2026",
-  //       "database_id": "<D1 の ID>",
-  //       "migrations_dir": "migrations"
-  //     }
-  //   ],
-  //   "kv_namespaces": [{ "binding": "KV", "id": "<KV の名前空間の ID>" }]
-  // }
-  "env": {}
+  "env": {
+    "yapc-tokyo-2026": {
+      "name": "checkin-yapc-tokyo-2026",
+      "account_id": "281b58bbd415342d339ed42b62693623",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "checkin-yapc-tokyo-2026",
+          "database_id": "3938ae65-9d28-4cd1-9009-25acb3d5d361",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "kv_namespaces": [{ "binding": "KV", "id": "30c940b167a041809b73d746282c36a2" }]
+    }
+  }
 }

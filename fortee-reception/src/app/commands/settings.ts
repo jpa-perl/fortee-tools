@@ -1,22 +1,21 @@
 import type { FeedbackKind } from "../services/ports.ts";
 import { soundEnabled, vibrationEnabled } from "../state/model.ts";
-import { writeMeta } from "../storage/db.ts";
 import { enqueue, rt } from "./runtime.ts";
 
 // 端末の設定（S09。FR-23）。音と振動は、端末ごとに無効にできる。ログアウトしても残す。
 
 /** S09 の「音」の切り替え */
 export async function setSoundEnabled(enabled: boolean): Promise<void> {
-  await enqueue(async (db) => {
-    await writeMeta(db, "sound", enabled);
+  await enqueue(async (store) => {
+    await store.writeMeta("sound", enabled);
     soundEnabled.value = enabled;
   });
 }
 
 /** S09 の「振動」の切り替え */
 export async function setVibrationEnabled(enabled: boolean): Promise<void> {
-  await enqueue(async (db) => {
-    await writeMeta(db, "vibration", enabled);
+  await enqueue(async (store) => {
+    await store.writeMeta("vibration", enabled);
     vibrationEnabled.value = enabled;
   });
 }

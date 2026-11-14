@@ -1,5 +1,5 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { parse } from "csv-parse/sync";
 import { strToU8, unzipSync } from "fflate";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -9,7 +9,7 @@ import { importZip } from "../../src/cli/commands/import.ts";
 import { importForteeZip, type ImportResult, ticketNoPrefix } from "../../src/cli/fortee-zip.ts";
 import { PROJECT_ROOT } from "../../src/cli/paths.ts";
 import { answerColumnsOf } from "../../src/cli/references.ts";
-import { readSnapshot, snapshotPath } from "../../src/cli/workdir.ts";
+import { profileUrlTokensPath, readSnapshot, snapshotPath } from "../../src/cli/workdir.ts";
 import { loadLocalConfig, silent, temporaryEnvironment, type TestEnvironment, writeZip } from "./helpers.ts";
 import {
   profileUrl,
@@ -43,10 +43,21 @@ beforeAll(async () => {
 });
 
 /** 本編の合成の ZIP を書き換えて、取り込む */
-function importMain(change?: (parts: SyntheticZipParts) => void, answerColumns: readonly string[] = MAIN_COLUMNS): ImportResult {
+function importMain(
+  change?: (parts: SyntheticZipParts) => void,
+  answerColumns: readonly string[] = MAIN_COLUMNS,
+  profileUrlTokens?: ReadonlyMap<string, string>,
+): ImportResult {
   const parts = syntheticZipParts(MAIN);
   change?.(parts);
-  return importForteeZip({ zip: toZip(parts), slug: SYNTHETIC_SLUG, eventId: SYNTHETIC_EVENT_IDS.main, answerColumns, now: NOW });
+  return importForteeZip({
+    zip: toZip(parts),
+    slug: SYNTHETIC_SLUG,
+    eventId: SYNTHETIC_EVENT_IDS.main,
+    answerColumns,
+    now: NOW,
+    ...(profileUrlTokens === undefined ? {} : { profileUrlTokens }),
+  });
 }
 
 const errorsOf = (result: ImportResult): string[] => (result.ok ? [] : result.errors);
@@ -317,19 +328,64 @@ describe("取り込み: 条件に合わない入力は、該当する行と列�
     ]);
   });
 
-  it("チケットトークン、Ticket no、profile_url_token が、行のあいだで重複する: 重複した行をすべて列挙する", () => {
+  it("チケットトークンと profile_url_token が、行のあいだで重複する: 重複した行をすべて列挙する", () => {
     const errors = errorsOf(
       importMain((parts) => {
         set(parts, "A-2", "Ticket url", rowOf(parts, "A-1")[col(parts, "Ticket url")] as string);
-        set(parts, "A-5", "Ticket no", "A-4");
-        set(parts, "A-12", "Ticket no", "A-4");
-        set(parts, "Z-1", "QR profile filename", rowOf(parts, "A-6")[col(parts, "QR profile filename")] as string);
+        // 名前の違う 2 枚の画像が、同じ profile_url_token を持つ
+        parts.files[`qr-profile/${rowOf(parts, "Z-1")[col(parts, "QR profile filename")] as string}`] = qrPng(
+          profileUrl(SYNTHETIC_SLUG, profileUrlTokenOf(MAIN, "A-6")),
+        );
       }),
     );
     expect(errors).toEqual([
       "「Ticket url」のチケットトークンが、行のあいだで重複しています: 2 行目、3 行目",
-      "「Ticket no」が、行のあいだで重複しています: 5 行目、6 行目、9 行目",
-      "「QR profile filename」の画像の profile_url_token が、行のあいだで重複しています: 7 行目、10 行目",
+      "profile_url_token（「QR profile filename」の画像か、補正の値）が、行のあいだで重複しています: 7 行目、10 行目",
+    ]);
+  });
+
+  // fortee の採番が、同じチケット番号を 2 人の参加者に付けた（本番の本編で確認）。画像の名前は種別名とチケット番号から
+  // 決まるので、2 人は 1 枚の画像を指す
+  const duplicateTicketNo = (parts: SyntheticZipParts): void => {
+    set(parts, "A-5", "QR profile filename", rowOf(parts, "A-4")[col(parts, "QR profile filename")] as string);
+    set(parts, "A-5", "Ticket no", "A-4");
+  };
+  const A4 = ticketTokenOf(MAIN, "A-4");
+  const A5 = ticketTokenOf(MAIN, "A-5");
+
+  it("Ticket no が重複し、画像を共有する行に補正がない: 画像の値を使わずに止まる", () => {
+    expect(errorsOf(importMain(duplicateTicketNo))).toEqual([
+      "「QR profile filename」の画像を、ほかの行と共有しています。profile_url_token を画像から決められないので、補正ファイルに、その行のチケットトークンと profile_url_token（fortee の参加者詳細画面の QR）を書いてください: 5 行目、6 行目",
+    ]);
+    // 片方だけの補正では、もう片方の行で止まる
+    const partial = new Map([[A4, profileUrlTokenOf(MAIN, "A-4")]]);
+    expect(errorsOf(importMain(duplicateTicketNo, MAIN_COLUMNS, partial))[0]).toMatch(/: 6 行目$/);
+  });
+
+  it("Ticket no が重複し、画像を共有する行に補正がある: 補正の値を取り込み、重複を警告に出す", () => {
+    const corrections = new Map([
+      [A4, profileUrlTokenOf(MAIN, "A-4")],
+      [A5, profileUrlTokenOf(MAIN, "A-5")],
+    ]);
+    const result = importMain(duplicateTicketNo, MAIN_COLUMNS, corrections);
+    if (!result.ok) throw new Error(result.errors.join("\n"));
+    expect(result.warnings).toContain("「Ticket no」が、行のあいだで重複しています（fortee の採番によるものか確かめてください）: 5 行目、6 行目");
+    const byToken = new Map(result.snapshot.attendees.map((attendee) => [attendee.ticketToken, attendee]));
+    expect(byToken.get(A4)).toMatchObject({ ticketNo: "A-4", profileUrlToken: profileUrlTokenOf(MAIN, "A-4") });
+    expect(byToken.get(A5)).toMatchObject({ ticketNo: "A-4", profileUrlToken: profileUrlTokenOf(MAIN, "A-5") });
+  });
+
+  it("補正が、画像を共有する行に当たらない。補正の値どうしが重複する: 止まる", () => {
+    // 画像を共有しない ZIP に補正がある
+    expect(errorsOf(importMain(undefined, MAIN_COLUMNS, new Map([[A4, profileUrlTokenOf(MAIN, "A-4")]])))).toEqual([
+      "補正ファイルに、画像を共有する行のどれにも当たらないチケットトークンが 1 件あります",
+    ]);
+    const same = new Map([
+      [A4, profileUrlTokenOf(MAIN, "A-4")],
+      [A5, profileUrlTokenOf(MAIN, "A-4")],
+    ]);
+    expect(errorsOf(importMain(duplicateTicketNo, MAIN_COLUMNS, same))).toEqual([
+      "profile_url_token（「QR profile filename」の画像か、補正の値）が、行のあいだで重複しています: 5 行目、6 行目",
     ]);
   });
 
@@ -431,6 +487,38 @@ describe("import コマンド", () => {
     set(broken, "A-1", "checked_in", "");
     await expect(run(broken, NOW + 3)).rejects.toThrow(/取り込めません（1 件）。スナップショットは変えていません\n {2}2 行目の「checked_in」/);
     expect(await readSnapshot(environment.target, SYNTHETIC_EVENT_IDS.main)).toMatchObject({ version: NOW + 2 });
+  });
+
+  it("補正ファイル（profile-url-tokens/{eventId}.json）を読む。なければ置き場所を出して止まり、形が違えば止まる", async () => {
+    const parts = syntheticZipParts(MAIN);
+    set(parts, "A-5", "QR profile filename", rowOf(parts, "A-4")[col(parts, "QR profile filename")] as string);
+    set(parts, "A-5", "Ticket no", "A-4");
+    const zip = await writeZip(environment.dir, "duplicated", parts);
+    const warnings: string[] = [];
+    const run = () => importZip(environment.target, config, { event: "main", zip }, { now: () => NOW, log: silent, warn: (line) => warnings.push(line) });
+    const path = profileUrlTokensPath(environment.target, SYNTHETIC_EVENT_IDS.main);
+
+    await expect(run()).rejects.toThrow(`5 行目、6 行目\n補正ファイル: ${path}`);
+
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, JSON.stringify({ [ticketTokenOf(MAIN, "A-4")]: "short" }));
+    await expect(run()).rejects.toThrow(/補正ファイル .* が、チケットトークン（英数字 32 文字）を鍵/);
+    await writeFile(path, "[");
+    await expect(run()).rejects.toThrow(/を JSON として読めません/);
+
+    await writeFile(
+      path,
+      JSON.stringify({
+        [ticketTokenOf(MAIN, "A-4")]: profileUrlTokenOf(MAIN, "A-4"),
+        [ticketTokenOf(MAIN, "A-5")]: profileUrlTokenOf(MAIN, "A-5"),
+      }),
+    );
+    await run();
+    expect(warnings).toContain("警告: 「Ticket no」が、行のあいだで重複しています（fortee の採番によるものか確かめてください）: 5 行目、6 行目");
+    const snapshot = await readSnapshot(environment.target, SYNTHETIC_EVENT_IDS.main);
+    expect(snapshot?.attendees.find((attendee) => attendee.ticketToken === ticketTokenOf(MAIN, "A-5"))?.profileUrlToken).toBe(
+      profileUrlTokenOf(MAIN, "A-5"),
+    );
   });
 
   it("読めない ZIP のパスで止まる", async () => {

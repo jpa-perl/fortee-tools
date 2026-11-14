@@ -29,12 +29,14 @@ const OPTIONS = {
   event: { type: "string" },
   zip: { type: "string" },
   ticket: { type: "string" },
+  "ticket-token": { type: "string" },
   reception: { type: "string" },
   done: { type: "string", multiple: true },
   out: { type: "string" },
   chunk: { type: "string" },
   "drift-threshold": { type: "string" },
   from: { type: "string" },
+  "dangerously-allow-dirty": { type: "boolean" },
 } as const;
 
 type OptionName = keyof typeof OPTIONS;
@@ -129,8 +131,8 @@ const COMMANDS: Record<string, Command> = {
   },
   preview: {
     summary: "参考情報テンプレートを描画する",
-    usage: "--event <key か id> --ticket <チケット番号> [--reception <受付の id>] [--done <イベント>:<チケット番号>]...",
-    options: ["event", "ticket", "reception", "done"],
+    usage: "--event <key か id> (--ticket <チケット番号> | --ticket-token <チケットトークン>) [--reception <受付の id>] [--done <イベント>:<チケット番号>]...",
+    options: ["event", "ticket", "ticket-token", "reception", "done"],
     config: "full",
     needsReady: false,
     run: (context) => {
@@ -140,7 +142,8 @@ const COMMANDS: Record<string, Command> = {
         configOf(context),
         {
           event: required(context.values, "event"),
-          ticket: required(context.values, "ticket"),
+          ticket: optional(context.values, "ticket"),
+          ticketToken: optional(context.values, "ticket-token"),
           reception: optional(context.values, "reception"),
           done: Array.isArray(done) ? done.filter((value): value is string => typeof value === "string") : [],
         },
@@ -195,9 +198,12 @@ const COMMANDS: Record<string, Command> = {
   // deploy は、未コミットの変更を確かめてから、環境の印とマイグレーションを自分で照合する
   deploy: {
     summary: "ビルドしてデプロイする",
+    usage: "[--dangerously-allow-dirty]",
+    options: ["dangerously-allow-dirty"],
     config: "head",
     needsReady: false,
-    run: ({ target }) => deploy(target, defaultDeployDeps(log)),
+    run: ({ target, values }) =>
+      deploy(target, { allowDirty: values["dangerously-allow-dirty"] === true }, defaultDeployDeps(log)),
   },
 };
 
@@ -208,7 +214,7 @@ function usage(): string {
     ...(command.usage === undefined ? [] : [`  ${"".padEnd(width)}    ${command.usage}`]),
   ]);
   return [
-    "使い方: npm run cli -- <コマンド> --env <環境名> [--config <TOML>] [コマンドの引数]",
+    "使い方: npm run admin -- <コマンド> --env <環境名> [--config <TOML>] [コマンドの引数]",
     "",
     "コマンド:",
     ...lines,

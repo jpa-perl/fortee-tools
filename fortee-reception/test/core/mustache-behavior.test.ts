@@ -8,7 +8,7 @@ import { renderTemplate } from "../../src/core/template.ts";
 const render = (template: string, context: object): string => {
   const result = renderTemplate(template, context);
   if (!result.ok) throw new Error(result.errors.map((error) => error.message).join("\n"));
-  return result.text;
+  return result.html;
 };
 
 describe("変数（Design Doc 4.6 の表）", () => {
@@ -24,8 +24,8 @@ describe("変数（Design Doc 4.6 の表）", () => {
     expect(render("[{{missing}}][{{nothing}}]", { nothing: null })).toBe("[][]");
   });
 
-  it("エスケープしない", () => {
-    expect(render("{{v}}", { v: `<b>&"'</b>` })).toBe(`<b>&"'</b>`);
+  it("変数の値は、既定のエスケープを通す。テンプレートの文字は、そのまま出す", () => {
+    expect(render("<i>{{v}}</i>", { v: "<b>&\"'/`=</b>" })).toBe("<i>&lt;b&gt;&amp;&quot;&#39;&#x2F;&#x60;&#x3D;&lt;&#x2F;b&gt;</i>");
   });
 
   it("値の中の記法は、解釈しない", () => {

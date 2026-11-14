@@ -180,6 +180,11 @@ export type LaunchOptions = {
   openTimeoutMs?: number;
   /** 起動の終わりを待たない */
   noWait?: boolean;
+  /**
+   * 起動の後の高速受付。既定は真。高速受付の既定はオフで、オフでは読み取りのたびに確認（S03-D1）が挟まるので、
+   * 確認を確かめないテストは、オンで動かす。端末に保存した値のまま動かすときは "stored"
+   */
+  fastCheckin?: boolean | "stored";
 };
 
 type Modules = {
@@ -399,9 +404,16 @@ export async function launch(world: World, options: LaunchOptions = {}): Promise
     databaseVersion: options.databaseVersion,
     openTimeoutMs: options.openTimeoutMs,
   });
-  const instance: Instance = { ...modules, world, booted, fake };
+  const fast = options.fastCheckin ?? true;
+  const started =
+    fast === "stored"
+      ? booted
+      : booted.then(() => {
+          modules.model.fastCheckin.value = fast;
+        });
+  const instance: Instance = { ...modules, world, booted: started, fake };
   if (options.noWait !== true) {
-    await booted;
+    await started;
     await settle();
   }
   return instance;

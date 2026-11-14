@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { pickSyncStatus, type SyncConditions } from "../../src/core/sync.ts";
 
-const none: SyncConditions = { syncing: false, offline: false, needsLogin: false, failed: false, hasUnsent: false };
+const none: SyncConditions = { paused: false, syncing: false, offline: false, needsLogin: false, failed: false, hasUnsent: false };
 
 describe("同期の状態の優先順（画面設計書 2.3）", () => {
   it.each([
@@ -14,19 +14,21 @@ describe("同期の状態の優先順（画面設計書 2.3）", () => {
     ["オフラインは、未送信の記録がなくてもオフライン", { offline: true }, "offline"],
     ["同期中は、ほかのどれよりも先", { syncing: true, offline: true, needsLogin: true, failed: true, hasUnsent: true }, "syncing"],
     ["同期中は、未同期ありより先", { syncing: true, hasUnsent: true }, "syncing"],
+    ["同期の停止は、ほかのどれよりも先", { paused: true, syncing: true, offline: true, failed: true, hasUnsent: true }, "paused"],
   ] as const)("%s", (_name, conditions, expected) => {
     expect(pickSyncStatus({ ...none, ...conditions })).toBe(expected);
   });
 
   it("条件のすべての組み合わせで、順に見て最初に当てはまったものを返す", () => {
     const order = [
+      ["paused", "paused"],
       ["syncing", "syncing"],
       ["offline", "offline"],
       ["needsLogin", "needsLogin"],
       ["failed", "failed"],
       ["hasUnsent", "pending"],
     ] as const;
-    for (let bits = 0; bits < 32; bits++) {
+    for (let bits = 0; bits < 64; bits++) {
       const conditions = { ...none };
       order.forEach(([key], i) => {
         conditions[key] = (bits & (1 << i)) !== 0;

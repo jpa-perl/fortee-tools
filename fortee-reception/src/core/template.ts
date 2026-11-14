@@ -6,7 +6,10 @@ import { formatTime } from "./time.ts";
 // 参考情報テンプレート（Design Doc 4.6、FR-20, 46）。
 //
 // 形式は、Mustache のうち変数（{{.}} を含む）、セクション、反転セクション、コメントだけを持つ部分集合で、
-// 描画は mustache.js を呼ぶ 1 つの関数（renderTemplate）に閉じる。エスケープは一切行わない。
+// 描画は mustache.js を呼ぶ 1 つの関数（renderTemplate）に閉じる。
+//
+// 描画結果は HTML である。テンプレートに書いた HTML はそのまま出し、変数の値（参加者が入力した値を含む）は
+// mustache.js の既定のエスケープを通す。エスケープしない変数は部分集合にないので、値がタグになることはない。
 //
 // - 部分集合の検証: 受付アプリと CLI の両方が行う
 // - 名前の検証: CLI の validate と publish だけが行う。受付アプリでは行わない（Design Doc 4.6、9.6）
@@ -22,7 +25,14 @@ export type TemplateContext = {
   /** name はチケットの Name をまとめた値（Design Doc 4.3） */
   user: { userName: string; name: string };
   /** 現在の受付。受付なしのときは持たない（FR-20） */
-  reception?: { id: string; name: string };
+  reception?: {
+    id: string;
+    name: string;
+    /** 設定の受付の id のすべて。現在の受付の id だけが true */
+    is: Record<string, boolean>;
+    /** 設定のイベントの key（なければ id）のすべて。現在の受付がチェックインするイベント（FR-2）が true */
+    checkin: Record<string, boolean>;
+  };
   /** そのユーザの有効なチケットすべて。チケットの並び順 */
   tickets: TemplateTicket[];
   /** イベントの key（なければ id）ごと。チケットを持たないイベントのキーは持たない */
@@ -108,6 +118,8 @@ const fixed = (fields: Record<string, Shape>): Shape => object(Object.entries(fi
 /** 名前の検証と文脈の組み立てが読む設定。公開する設定も、設定検証の途中の値も渡せる */
 export type TemplateConfig = {
   events: readonly { id: string; name: string; key?: string | undefined }[];
+  /** checkin は、イベントの id か key。公開する設定では id に解決済みで、設定検証の途中では書かれたままの値である */
+  receptions: readonly { id: string; checkin: readonly string[] }[];
   display: {
     answers: readonly { event: string; field: string; key?: string | undefined }[];
     ticketTypes: readonly { event: string; types: readonly string[]; key: string }[];
@@ -131,7 +143,12 @@ function rootShape(config: TemplateConfig): Shape {
   const tickets: Shape = { kind: "array", item: ticket };
   return fixed({
     user: fixed({ userName: STRING, name: STRING }),
-    reception: fixed({ id: STRING, name: STRING }),
+    reception: fixed({
+      id: STRING,
+      name: STRING,
+      is: object(config.receptions.map((reception): [string, Shape] => [reception.id, BOOLEAN])),
+      checkin: object(config.events.map((event): [string, Shape] => [eventKeyOf(event), BOOLEAN])),
+    }),
     tickets,
     byEvent: object(config.events.map((event): [string, Shape] => [eventKeyOf(event), tickets])),
   });
@@ -212,20 +229,19 @@ export function validateTemplate(template: string, config: TemplateConfig): Temp
   return errors.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
 }
 
-export type RenderResult = { ok: true; text: string } | { ok: false; errors: TemplateError[] };
-
-/** 値を、そのまま文字列にする。描画結果はただの文字列として表示するので、エスケープしない（FR-20） */
-const noEscape = (value: unknown) => String(value);
+/** html は、HTML として表示する文字列。変数の値はエスケープ済みである */
+export type RenderResult = { ok: true; html: string } | { ok: false; errors: TemplateError[] };
 
 /**
- * テンプレートを描画する（Design Doc 4.6）。部分集合の検証を通らないテンプレートは、描画せずに誤りを返す。
- * 名前の検証は行わない。文脈にない名前は、空文字になる
+ * テンプレートを HTML に描画する（Design Doc 4.6、FR-20）。部分集合の検証を通らないテンプレートは、描画せずに誤りを返す。
+ * 名前の検証は行わない。文脈にない名前は、空文字になる。
+ * 変数の値は、mustache.js の既定のエスケープ（& < > " ' / ` =）を通す
  */
 export function renderTemplate(template: string, context: object): RenderResult {
   const errors = checkTemplateSubset(template);
   if (errors.length > 0) return { ok: false, errors };
   try {
-    return { ok: true, text: Mustache.render(template, context, {}, { tags: TAGS, escape: noEscape }) };
+    return { ok: true, html: Mustache.render(template, context, {}, { tags: TAGS }) };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     return { ok: false, errors: [{ message: `テンプレートを描画できません: ${detail}` }] };
@@ -302,6 +318,21 @@ export function buildTemplateContext(input: BuildTemplateContextInput): Template
     tickets,
     byEvent,
   };
-  if (input.reception !== null) context.reception = { id: input.reception.id, name: input.reception.name };
+  if (input.reception !== null) {
+    const { id, name } = input.reception;
+    // すべての受付の id とイベントの key を false で置いてから、当てはまるものを true にする。
+    // 名前の検証が通す名前を、必ず文脈に持たせるためである
+    const is = emptyRecord<boolean>();
+    for (const reception of config.receptions) is[reception.id] = false;
+    is[id] = true;
+    const checkin = emptyRecord<boolean>();
+    for (const event of config.events) checkin[eventKeyOf(event)] = false;
+    const current = config.receptions.find((reception) => reception.id === id);
+    for (const ref of current?.checkin ?? []) {
+      const event = config.events.find((candidate) => candidate.id === ref || candidate.key === ref);
+      if (event !== undefined) checkin[eventKeyOf(event)] = true;
+    }
+    context.reception = { id, name, is, checkin };
+  }
   return context;
 }

@@ -11,7 +11,7 @@ import {
   override,
   screen,
 } from "../state/model.ts";
-import { writeMeta } from "../storage/db.ts";
+import type { Store } from "../storage/store.ts";
 import { enqueue, go, rt, setOverlay } from "./runtime.ts";
 
 // 受付の確定、手動の切り替えとその解除（Design Doc 6.2、FR-6〜8）と、画面の下の知らせ。
@@ -50,7 +50,7 @@ export function recomputeReception(): NoticeLine | null {
   // 期限を過ぎたか、指す受付が設定から消えた上書きは、消す
   if (override.value !== null && overrideTarget(config.value, override.value, now.value) === null) {
     override.value = null;
-    void enqueue((db) => writeMeta(db, "override", null));
+    void enqueue((store) => store.writeMeta("override", null));
   }
   if (previous.reception === next.reception && previous.manual === next.manual) return null;
   confirmedReception.value = next;
@@ -72,13 +72,13 @@ export function initReception(): void {
  * 列の処理の中から呼ぶ。until は、確定した時刻の次の境界（FR-8）。保留していた自動の切り替えは、
  * 確定している受付をここで書き換えるので、捨てられる。知らせは出さない
  */
-export async function applyOverride(db: Parameters<typeof writeMeta>[0], receptionId: string | null): Promise<void> {
+export async function applyOverride(store: Store, receptionId: string | null): Promise<void> {
   const settings = config.value;
   if (settings === null) return;
   const time = rt.ports.platform.now();
   now.value = time;
   const next = receptionId === null ? null : { receptionId, until: nextBoundary(settings, time) };
-  await writeMeta(db, "override", next);
+  await store.writeMeta("override", next);
   override.value = next;
   confirmedReception.value = effectiveReception.value;
 }
@@ -116,8 +116,8 @@ export async function confirmReceptionChange(): Promise<void> {
   const change = sheet.step.change;
   busy.value = true;
   try {
-    await enqueue(async (db) => {
-      await applyOverride(db, change.kind === "switch" ? change.receptionId : null);
+    await enqueue(async (store) => {
+      await applyOverride(store, change.kind === "switch" ? change.receptionId : null);
       setOverlay(null);
     });
   } finally {

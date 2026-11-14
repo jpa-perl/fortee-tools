@@ -39,6 +39,8 @@ CSV は UTF-8（BOM 付き）で、列は次のとおり。
 
 フォーム項目の列名は fortee 上の項目名そのものなので、項目名を変えると列名も変わる。「名前」タイプの項目を作っても `Name` 列には入らず、項目名の列に入った（Sandbox で確認）。`Name`・`Twitter` 列は fortee ユーザのプロフィールの値でもなく、参加者ごとの属性である（data-model.md の「参加者（チケット）」）。何がこの属性を埋めるかは未確認である。
 
+チケット番号は、参加者のあいだで重複することがある。本番の本編（2026-11-13 の ZIP）で、同じ番号が別のユーザの 2 人に付いている組が 2 組あった。4 人ともキャンセル済みでも未発券でもなく、チケットトークンは別である。画像のファイル名は種別名とチケット番号から決まるので、同じ番号の 2 人は CSV の `QR profile filename` と `QR feedback filename` が同じ値になり、ZIP の画像は 1 枚しかない。その画像がどちらの参加者のものかは、ZIP からは分からない。採番は fortee が行い、主催者の側では直せない。重複した参加者の profile_url_token は、参加者詳細画面から読む。
+
 QR 画像の内容は、`qr-profile/` が `https://fortee.jp/{conf}/attendee/{profile_url_token}/go-profile`、`qr-feedback/` が `https://fortee.jp/{conf}/attendee/{チケットトークン}` である（qrtool でデコードして確認）。profile_url_token を全参加者分そろえるには、この `qr-profile/` 画像を機械的にデコードするのが最も手間が少ない。
 
 ## 一覧の HTML 断片（bare-list）

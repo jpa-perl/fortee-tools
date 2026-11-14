@@ -12,7 +12,6 @@ import {
   records,
   screen,
 } from "../state/model.ts";
-import { addRecords } from "../storage/db.ts";
 import { showNotice } from "./reception.ts";
 import { enqueue, rt, setOverlay } from "./runtime.ts";
 
@@ -38,7 +37,7 @@ export async function confirmCancel(ticketTokens: readonly string[], reason: Can
   const opId = current.opId;
   busy.value = true;
   try {
-    await enqueue(async (db) => {
+    await enqueue(async (store) => {
       const device = deviceId.value;
       const who = operator.value;
       const operation = operations.value.find((candidate) => candidate.opId === opId);
@@ -69,7 +68,7 @@ export async function confirmCancel(ticketTokens: readonly string[], reason: Can
       }
       if (created.length > 0) {
         const stored = created.map((record): DeviceRecord => ({ ...record, sent: false, seq: null, receivedAt: null }));
-        await addRecords(db, stored);
+        await store.addRecords(stored);
         records.value = [...records.value, ...stored];
       }
       setOverlay(null);

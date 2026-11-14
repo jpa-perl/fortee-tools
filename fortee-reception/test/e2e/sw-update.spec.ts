@@ -1,5 +1,5 @@
 import { expect, type Page, test as base } from "@playwright/test";
-import { addSessionCookie, resultTitle, scan, scanButton } from "./helpers.ts";
+import { addSessionCookie, enableFastCheckin, resultTitle, scan, scanButton } from "./helpers.ts";
 import { qr } from "./setup/data.ts";
 import { serveShell, SHELL_VERSION_META, type ShellSite } from "./setup/shell-server.ts";
 
@@ -69,6 +69,7 @@ async function loginTo(page: Page, site: ShellSite): Promise<void> {
   await addSessionCookie(page.context(), site.origin);
   await page.goto(`${site.origin}/?login=ok`);
   await expect(scanButton(page)).toBeVisible();
+  await enableFastCheckin(page);
   await page.context().clearCookies();
 }
 
@@ -303,7 +304,9 @@ test("ロックをほかの画面が持つ S99 は、待機中の版を有効に
   // 画面 B。起動の最初の判定（ロックの照会）で失敗して、ロックを持たないまま S99 に移る
   const second = await context.newPage();
   await second.addInitScript(() => {
-    navigator.locks.query = () => Promise.reject(new Error("ロックを調べられない"));
+    // navigator.locks のオブジェクトではなく、プロトタイプを差し替える。WebKit は、navigator.locks の
+    // JavaScript のオブジェクトを GC で作り直すことがあり、オブジェクトに置いた差し替えは、そのときに消える
+    LockManager.prototype.query = () => Promise.reject(new Error("ロックを調べられない"));
   });
   await second.goto(site.origin);
   await expect(second.getByRole("heading", { level: 1 })).toHaveText("エラーが発生しました");

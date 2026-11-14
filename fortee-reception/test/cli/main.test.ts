@@ -146,7 +146,7 @@ describe("管理 CLI の入口（Design Doc 8.1）", () => {
   it.each([
     ["import の --event", ["import", "--env", "local", "--zip", "x.zip"], "--event <値> を指定してください"],
     ["import の --zip", ["import", "--env", "local", "--event", "main"], "--zip <値> を指定してください"],
-    ["preview の --ticket", ["preview", "--env", "local", "--event", "main"], "--ticket <値> を指定してください"],
+    ["preview の --ticket か --ticket-token", ["preview", "--env", "local", "--event", "main"], "--ticket <チケット番号> か --ticket-token <チケットトークン> の、どちらか一方を指定してください"],
   ])("必須のオプションがなければ止まる: %s", async (_name, args, message) => {
     const result = await cli(...args);
     expect(result.code).toBe(1);

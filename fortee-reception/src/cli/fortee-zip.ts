@@ -2,7 +2,7 @@ import { parse } from "csv-parse/sync";
 import { unzipSync } from "fflate";
 import jsQR from "jsqr";
 import { PNG } from "pngjs";
-import { NAME_MAX_LENGTH } from "../core/fields.ts";
+import { NAME_MAX_LENGTH, TICKET_TOKEN_SOURCE } from "../core/fields.ts";
 import type { Attendee, Snapshot } from "../core/snapshot.ts";
 import { DISTRIBUTION_FORMAT } from "../core/versions.ts";
 
@@ -39,6 +39,11 @@ export type ImportInput = {
   answerColumns: readonly string[];
   /** 取り込み日時。スナップショットの版になる */
   now: number;
+  /**
+   * profile_url_token の補正（チケットトークン → profile_url_token）。プロフィール QR の画像を複数の行が共有するときに、
+   * その行の profile_url_token を、画像の代わりにここから取る。省略は、補正なし
+   */
+  profileUrlTokens?: ReadonlyMap<string, string>;
 };
 
 export type TicketTypeSummary = {
@@ -60,7 +65,8 @@ export type ImportSummary = {
 
 export type ImportResult =
   | { ok: true; snapshot: Snapshot; summary: ImportSummary; warnings: string[] }
-  | { ok: false; errors: string[] };
+  /** needsProfileUrlTokens は、補正ファイルを書くか直すかすれば解ける誤りがあるとき（8.3 の「画像を共有する行」） */
+  | { ok: false; errors: string[]; needsProfileUrlTokens: boolean };
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -131,21 +137,21 @@ export function importForteeZip(input: ImportInput): ImportResult {
       filter: (file) => file.name.toLowerCase().endsWith(".csv") || file.name.startsWith(QR_PROFILE_DIR),
     });
   } catch {
-    return { ok: false, errors: ["ZIP として読めません"] };
+    return { ok: false, needsProfileUrlTokens: false, errors: ["ZIP として読めません"] };
   }
   // ZIP の CSV は 1 本である（data-sources.md）。0 本と 2 本以上は、どれを読むかを選ばずに止める
   const csvNames = Object.keys(entries).filter((name) => name.toLowerCase().endsWith(".csv"));
   const csvName = csvNames[0];
   if (csvName === undefined || csvNames.length !== 1) {
     const found = csvNames.length === 0 ? "ありません" : `${csvNames.length} 本あります（${csvNames.join("、")}）`;
-    return { ok: false, errors: [`ZIP の中の CSV は 1 本でなければなりませんが、${found}`] };
+    return { ok: false, needsProfileUrlTokens: false, errors: [`ZIP の中の CSV は 1 本でなければなりませんが、${found}`] };
   }
 
   // 2. CSV を読む
   const csv = readCsv(entries[csvName] as Uint8Array);
-  if (!csv.ok) return { ok: false, errors: [csv.error] };
+  if (!csv.ok) return { ok: false, needsProfileUrlTokens: false, errors: [csv.error] };
   const [header, ...rows] = csv.rows;
-  if (header === undefined) return { ok: false, errors: ["CSV が空です。ヘッダの行がありません"] };
+  if (header === undefined) return { ok: false, needsProfileUrlTokens: false, errors: ["CSV が空です。ヘッダの行がありません"] };
 
   // 3. ヘッダを検証する。列名は文字列の完全一致で比べ、前後の空白や大文字と小文字を無視しない
   const errors: string[] = [];
@@ -177,14 +183,14 @@ export function importForteeZip(input: ImportInput): ImportResult {
       `CSV のヘッダに、同じ名前の列があります（読まない列なので続けます）: ${unreadDuplicates.map(([name]) => `「${name}」`).join("、")}`,
     );
   }
-  if (errors.length > 0) return { ok: false, errors };
+  if (errors.length > 0) return { ok: false, needsProfileUrlTokens: false, errors };
 
   const indexOf = (name: string) => positions.get(name)?.[0] as number;
   const at = (row: Row, name: string) => row.cells[indexOf(name)] as string;
 
   // 4. 各行を検証し、変換する
-  const ticketUrlPattern = new RegExp(`^https://fortee\\.jp/${escapeRegExp(slug)}/attendee/([0-9A-Za-z]{32})$`);
-  const profileUrlPattern = new RegExp(`^https://fortee\\.jp/${escapeRegExp(slug)}/attendee/([0-9A-Za-z]{32})/go-profile$`);
+  const ticketUrlPattern = new RegExp(`^https://fortee\\.jp/${escapeRegExp(slug)}/attendee/(${TICKET_TOKEN_SOURCE})$`);
+  const profileUrlPattern = new RegExp(`^https://fortee\\.jp/${escapeRegExp(slug)}/attendee/(${TICKET_TOKEN_SOURCE})/go-profile$`);
 
   const attendees: Attendee[] = [];
   const seen = { ticketToken: [], ticketNo: [], profileUrlToken: [] } as Record<
@@ -194,13 +200,30 @@ export function importForteeZip(input: ImportInput): ImportResult {
   const types = new Map<string, { count: number; prefixes: Set<string> }>();
   let unissued = 0;
 
+  const isUnissued = (row: Row) => at(row, COLUMN.userName) === "" && at(row, COLUMN.issued) === "";
+
+  // プロフィール QR の画像を共有する行。fortee は、チケット番号を複数の参加者に重ねて採番することがあり、
+  // 画像の名前は種別名とチケット番号から決まるので、その参加者たちは 1 枚の画像を指す（data-sources.md）。
+  // 画像の値はそのうちの高々 1 人のものなので、どの行にも使わず、補正から取る
+  const qrUsers = new Map<string, number[]>();
+  for (const row of rows) {
+    const qrName = at(row, COLUMN.qrProfile);
+    if (isUnissued(row) || qrName === "") continue;
+    const list = qrUsers.get(qrName);
+    if (list === undefined) qrUsers.set(qrName, [row.line]);
+    else list.push(row.line);
+  }
+  const corrections = input.profileUrlTokens ?? new Map<string, string>();
+  const usedCorrections = new Set<string>();
+  const uncorrected: number[] = [];
+
   for (const row of rows) {
     const fail = (column: string, message: string) => errors.push(`${row.line} 行目の「${column}」: ${message}`);
     const userName = at(row, COLUMN.userName);
     const issued = at(row, COLUMN.issued);
 
     // User name と Issued が両方空の行は、未発券として除く。片方だけが空の行は、何を表すかを確かめていないので止める
-    if (userName === "" && issued === "") {
+    if (isUnissued(row)) {
       unissued++;
       continue;
     }
@@ -228,6 +251,13 @@ export function importForteeZip(input: ImportInput): ImportResult {
     const png = qrName === "" ? undefined : entries[`${QR_PROFILE_DIR}${qrName}`];
     if (qrName === "") {
       fail(COLUMN.qrProfile, "空です");
+    } else if ((qrUsers.get(qrName)?.length ?? 0) > 1) {
+      // 画像を共有する行。チケットトークンが読めない行は、Ticket url の誤りとして上で挙げている
+      if (ticketToken !== undefined) {
+        profileUrlToken = corrections.get(ticketToken);
+        if (profileUrlToken === undefined) uncorrected.push(row.line);
+        else usedCorrections.add(ticketToken);
+      }
     } else if (png === undefined) {
       fail(COLUMN.qrProfile, `ZIP に、この値の名前の画像（${QR_PROFILE_DIR} 以下）がありません`);
     } else {
@@ -265,18 +295,40 @@ export function importForteeZip(input: ImportInput): ImportResult {
     });
   }
 
-  // イベントの中での重複。fortee ではどれもチケットごとに別の値なので、どちらの行を採るかを決める根拠がない
+  const linesText = (lines: readonly number[]) => lines.map((line) => `${line} 行目`).join("、");
+
+  // 画像を共有する行に、補正がない。画像の値を黙って使うと、一括チェックイン CSV の 1 行が別の参加者を指す
+  if (uncorrected.length > 0) {
+    errors.push(
+      `「${COLUMN.qrProfile}」の画像を、ほかの行と共有しています。profile_url_token を画像から決められないので、補正ファイルに、その行のチケットトークンと profile_url_token（fortee の参加者詳細画面の QR）を書いてください: ${linesText(uncorrected)}`,
+    );
+  }
+  // 使わなかった補正は、止める。画像を共有しなくなった行の古い補正や、チケットトークンの書き間違いを、黙って捨てない
+  const unusedCorrections = [...corrections.keys()].filter((ticketToken) => !usedCorrections.has(ticketToken)).length;
+  if (unusedCorrections > 0) {
+    errors.push(`補正ファイルに、画像を共有する行のどれにも当たらないチケットトークンが ${unusedCorrections} 件あります`);
+  }
+
+  // イベントの中での重複。チケットトークンと profile_url_token は、fortee ではチケットごとに別の値なので、
+  // どちらの行を採るかを決める根拠がない
   for (const [label, entriesOf] of [
     [`「${COLUMN.ticketUrl}」のチケットトークンが`, seen.ticketToken],
-    [`「${COLUMN.ticketNo}」が`, seen.ticketNo],
-    [`「${COLUMN.qrProfile}」の画像の profile_url_token が`, seen.profileUrlToken],
+    [`profile_url_token（「${COLUMN.qrProfile}」の画像か、補正の値）が`, seen.profileUrlToken],
   ] as const) {
     for (const lines of duplicateLines(entriesOf)) {
-      errors.push(`${label}、行のあいだで重複しています: ${lines.map((line) => `${line} 行目`).join("、")}`);
+      errors.push(`${label}、行のあいだで重複しています: ${linesText(lines)}`);
     }
   }
 
-  if (errors.length > 0) return { ok: false, errors };
+  if (errors.length > 0) {
+    return { ok: false, needsProfileUrlTokens: uncorrected.length > 0 || unusedCorrections > 0, errors };
+  }
+
+  // Ticket no の重複は、警告にとどめる。fortee の採番が、同じ番号を複数の参加者に付けることがある（本番で確認）。
+  // 参加者はチケットトークンで特定し、チケット番号は表示、検索、並び順にしか使わない
+  for (const lines of duplicateLines(seen.ticketNo)) {
+    warnings.push(`「${COLUMN.ticketNo}」が、行のあいだで重複しています（fortee の採番によるものか確かめてください）: ${linesText(lines)}`);
+  }
 
   if (unissued > 0) warnings.push(`未発券の行（「${COLUMN.userName}」と「${COLUMN.issued}」が空）を ${unissued} 行、取り込まずに除きました`);
 

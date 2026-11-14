@@ -336,6 +336,7 @@ export function validateConfigFile(raw: unknown, options: ValidateConfigOptions 
   // template.reference が解析でき、部分集合の検証と名前の検証を通る
   const templateErrors = validateTemplate(file.template.reference, {
     events,
+    receptions,
     display: { answers: displayAnswers, ticketTypes },
   });
   for (const templateError of templateErrors) {

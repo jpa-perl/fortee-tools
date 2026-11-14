@@ -231,7 +231,10 @@ function CameraArea({ camera }: { camera: CameraState }) {
         )}
       </div>
       {scanBanner.value && (
-        <p class="absolute inset-x-4 top-4 rounded-pressable bg-surface px-4 py-3 text-center font-bold text-ink" role="status">
+        <p
+          class="absolute inset-x-4 top-4 z-10 rounded-pressable bg-surface px-4 py-3 text-center font-bold text-ink"
+          role="status"
+        >
           チケットの QR ではありません
         </p>
       )}
@@ -457,6 +460,9 @@ export function Home({ mode }: { mode: HomeMode }) {
       return <Idle />;
     case "scanning":
       return <Scanning camera={mode.camera} />;
+    case "confirming":
+      // 通常受付の確認（S03-D1）。カメラを止めた読み取り中の見た目に、ダイアログ（Overlay.tsx）が重なる
+      return <Scanning camera="streaming" />;
     default:
       return <Result mode={mode} />;
   }

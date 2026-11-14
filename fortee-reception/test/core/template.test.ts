@@ -64,7 +64,7 @@ const context = contextOf(
 const render = (template: string, ctx: object = context) => {
   const result = renderTemplate(template, ctx);
   if (!result.ok) throw new Error(result.errors.map((error) => error.message).join("\n"));
-  return result.text;
+  return result.html;
 };
 
 const messages = (template: string) => validateTemplate(template, config).map((error) => error.message);
@@ -130,13 +130,20 @@ describe("名前の検証（Design Doc 4.6）", () => {
   it.each([
     ["最も外側の名前", "{{user.userName}}（{{user.name}}）", "karupanerura（かるぱ、karupa）"],
     ["受付", "{{reception.id}} {{reception.name}}", "main 本編受付"],
+    ["現在の受付かどうか", "{{#reception.is.main}}本編{{/reception.is.main}}{{#reception.is.eve}}前夜祭{{/reception.is.eve}}{{^reception.is.party}}懇親会でない{{/reception.is.party}}", "本編懇親会でない"],
+    [
+      "現在の受付がチェックインするイベントかどうか",
+      "{{#reception.checkin.main}}本編{{/reception.checkin.main}}{{#reception.checkin.eve}}前夜祭{{/reception.checkin.eve}}{{^reception.checkin.party}}懇親会でない{{/reception.checkin.party}}",
+      "本編懇親会でない",
+    ],
+    ["チケットのセクションの中から、受付の判定を引く", inTicket("{{#reception.checkin.main}}{{ticketNo}}{{/reception.checkin.main}}"), "A-12"],
     ["受付のセクション", "{{#reception}}{{name}}{{/reception}}{{^reception}}受付なし{{/reception}}", "本編受付"],
     ["チケットの一覧", "{{#tickets}}[{{eventKey}} {{eventName}} {{ticketNo}} {{name}}]{{/tickets}}", "[main 本編 A-12 かるぱ][eve 前夜祭 E-1 karupa]"],
     ["イベントごと", inTicket("{{ticketNo}} {{ticketType}}"), "A-12 【カンファレンス本編】一般チケット"],
     ["イベントの id では引けず、key で引く", "{{#byEvent.eve}}{{ticketNo}}{{/byEvent.eve}}", "E-1"],
     ["チケットを持たないイベントの反転セクション", "{{^byEvent.party}}懇親会なし{{/byEvent.party}}", "懇親会なし"],
     ["真偽値の変数", inTicket("{{done}} {{forteeCheckedIn}}"), "true false"],
-    ["真偽値のセクションの中の名前は、外側のチケットの形で解決する", inTicket("{{#done}}{{doneAt}} {{doneReception}}{{/done}}"), "11/27 18:05 前夜祭受付"],
+    ["真偽値のセクションの中の名前は、外側のチケットの形で解決する", inTicket("{{#done}}{{doneAt}} {{doneReception}}{{/done}}"), "11&#x2F;27 18:05 前夜祭受付"],
     ["反転セクションの中の名前も、外側のチケットの形で解決する", "{{#byEvent.eve}}{{^done}}未 {{ticketNo}}{{/done}}{{/byEvent.eve}}", "未 E-1"],
     ["種別の群", inTicket("{{#typeIs.general}}一般{{/typeIs.general}}{{#typeIs.staff}}スタッフ{{/typeIs.staff}}{{^typeIs.vip}}VIP でない{{/typeIs.vip}}"), "一般VIP でない"],
     ["回答の変数", inTicket("{{answers.tshirt}}"), "L"],
@@ -232,7 +239,7 @@ describe("名前の検証（Design Doc 4.6）", () => {
 });
 
 describe("描画（Design Doc 4.6、FR-20）", () => {
-  it("エスケープしない。参加者が入力した値を、そのままの文字列で出す", () => {
+  it("変数の値は、HTML のエスケープを通す。参加者が入力した値は、タグにならない", () => {
     const html = ticket({ eventId: MAIN, userName: "<b>&\"'/`=</b>", name: "<script>alert(1)</script>" });
     const ctx = buildTemplateContext({
       userName: html.userName,
@@ -241,7 +248,21 @@ describe("描画（Design Doc 4.6、FR-20）", () => {
       config,
       now: NOW,
     });
-    expect(render("{{user.userName}} {{user.name}}", ctx)).toBe("<b>&\"'/`=</b> <script>alert(1)</script>");
+    expect(render("{{user.userName}} {{user.name}}", ctx)).toBe(
+      "&lt;b&gt;&amp;&quot;&#39;&#x2F;&#x60;&#x3D;&lt;&#x2F;b&gt; &lt;script&gt;alert(1)&lt;&#x2F;script&gt;",
+    );
+  });
+
+  it("テンプレートに書いた HTML は、そのまま出す", () => {
+    const plain = ticket({ eventId: MAIN, userName: "a<b" });
+    const ctx = buildTemplateContext({
+      userName: plain.userName,
+      tickets: [{ ticket: plain, done: null }],
+      reception: null,
+      config,
+      now: NOW,
+    });
+    expect(render('<b class="x">{{user.userName}}</b><br>', ctx)).toBe('<b class="x">a&lt;b</b><br>');
   });
 
   it("値の中の Mustache の記法は、解釈しない", () => {
@@ -256,37 +277,58 @@ describe("描画（Design Doc 4.6、FR-20）", () => {
     expect(render("{{user.userName}}|{{user.name}}", ctx)).toBe("{{user.name}}|{{{x}}}");
   });
 
-  it("改行を保ち、セクションだけの行は行ごと取り除く。変数だけの行は取り除かない", () => {
+  it("描画結果の文字列は改行を保ち、セクションだけの行は行ごと取り除く。変数だけの行は取り除かない", () => {
     const template = "1 行目\n{{#byEvent.main}}\n{{ticketNo}}\n{{/byEvent.main}}\n{{! コメント }}\n{{user.userName}}\n最後\n";
     expect(render(template)).toBe("1 行目\nA-12\nkarupanerura\n最後\n");
   });
 
   it("Design Doc 4.2 の例のテンプレートを描画する", () => {
     const template = [
-      "{{user.userName}} さん",
+      "<h3>{{user.userName}} さん</h3>",
       "{{#byEvent.main}}",
-      "本編 {{ticketNo}} {{ticketType}}{{#done}}（済 {{doneAt}}）{{/done}}",
-      "{{#typeIs.general}}ネームカード: 一般。Tシャツあり{{/typeIs.general}}",
-      "{{#typeIs.staff}}ネームカード: スタッフ。Tシャツはスタッフ控室で{{/typeIs.staff}}",
-      "{{#answers.tshirt}}Tシャツ: {{answers.tshirt}}{{/answers.tshirt}}",
+      "<p>本編 {{ticketNo}} {{ticketType}}{{#done}}（済 {{doneAt}}）{{/done}}</p>",
+      "<ul>",
+      "{{#typeIs.general}}",
+      "<li>ネームカード: 一般。Tシャツあり</li>",
+      "{{/typeIs.general}}",
+      "{{#typeIs.staff}}",
+      "<li>ネームカード: スタッフ。Tシャツはスタッフ控室で</li>",
+      "{{/typeIs.staff}}",
+      "{{#answers.tshirt}}",
+      "<li>Tシャツ: <b>{{answers.tshirt}}</b></li>",
+      "{{/answers.tshirt}}",
+      "</ul>",
       "{{/byEvent.main}}",
       "{{^byEvent.main}}",
-      "本編チケットなし",
+      "<p>本編チケットなし</p>",
       "{{/byEvent.main}}",
       "",
     ].join("\n");
     expect(validateTemplate(template, config)).toEqual([]);
     expect(render(template)).toBe(
-      "karupanerura さん\n本編 A-12 【カンファレンス本編】一般チケット（済 11/27 18:05）\nネームカード: 一般。Tシャツあり\n\nTシャツ: L\n",
+      [
+        "<h3>karupanerura さん</h3>",
+        "<p>本編 A-12 【カンファレンス本編】一般チケット（済 11&#x2F;27 18:05）</p>",
+        "<ul>",
+        "<li>ネームカード: 一般。Tシャツあり</li>",
+        "<li>Tシャツ: <b>L</b></li>",
+        "</ul>",
+        "",
+      ].join("\n"),
     );
-    expect(render(template, contextOf([{ ticket: eveTicket, done: null }]))).toBe("karupanerura さん\n本編チケットなし\n");
+    expect(render(template, contextOf([{ ticket: eveTicket, done: null }]))).toBe("<h3>karupanerura さん</h3>\n<p>本編チケットなし</p>\n");
   });
 });
 
 describe("文脈の組み立て（Design Doc 4.6）", () => {
   it("ユーザ、受付、チケットの一覧、イベントごとのチケットを持つ", () => {
     expect(context.user).toEqual({ userName: "karupanerura", name: "かるぱ、karupa" });
-    expect(context.reception).toEqual({ id: "main", name: "本編受付" });
+    expect(context.reception).toEqual({
+      id: "main",
+      name: "本編受付",
+      is: { eve: false, main: true, party: false },
+      checkin: { main: true, eve: false, party: false, nursery: false },
+    });
     expect(context.tickets.map((t) => t.ticketNo)).toEqual(["A-12", "E-1"]);
     expect(Object.keys(context.byEvent)).toEqual(["main", "eve"]);
     expect(context.byEvent.main).toEqual([context.tickets[0]]);
@@ -331,6 +373,14 @@ describe("文脈の組み立て（Design Doc 4.6）", () => {
     const ctx = contextOf([{ ticket: mainTicket, done: null }]);
     expect("reception" in ctx).toBe(false);
     expect(render("{{^reception}}受付なし{{/reception}}{{reception.name}}", ctx)).toBe("受付なし");
+    // 受付の判定は、どれも偽になる
+    expect(render("[{{#reception.is.main}}x{{/reception.is.main}}{{#reception.checkin.main}}y{{/reception.checkin.main}}]", ctx)).toBe("[]");
+  });
+
+  it("複数のイベントをチェックインする受付では、そのイベントがどれも真になる", () => {
+    const ctx = contextOf([{ ticket: mainTicket, done: null }], { id: "eve", name: "前夜祭受付" });
+    expect(ctx.reception?.is).toEqual({ eve: true, main: false, party: false });
+    expect(ctx.reception?.checkin).toEqual({ main: true, eve: true, party: false, nursery: false });
   });
 
   it("チケットを持たないイベントのキーは、byEvent に置かない", () => {

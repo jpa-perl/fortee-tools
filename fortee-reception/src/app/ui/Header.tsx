@@ -16,6 +16,8 @@ import { receptionEmphasized } from "./Notice.tsx";
 /** 同期の状態のアイコン。名前は画面設計書 2.3 の表のとおり。S09 の「同期」の行でも使う */
 export function SyncStatusIcon() {
   switch (syncStatus.value) {
+    case "paused":
+      return <CloudOffIcon class="size-7" label="同期を停止中" />;
     case "syncing":
       return <SpinnerIcon class="size-7 animate-spin" label="同期中" />;
     case "offline":
@@ -35,10 +37,10 @@ export function SyncStatusIcon() {
   }
 }
 
-/** 同期の状態。同期中とオフラインでは、押しても何も起きないので、ボタンにしない */
+/** 同期の状態。同期の停止、同期中、オフラインでは、押しても何も起きないので、ボタンにしない */
 function SyncStatus() {
   const status = syncStatus.value;
-  if (status === "syncing" || status === "offline") {
+  if (status === "paused" || status === "syncing" || status === "offline") {
     return (
       <span class="flex size-12 items-center justify-center">
         <SyncStatusIcon />

@@ -9,6 +9,7 @@ import {
   confirmedReception,
   cursor,
   deviceId,
+  fastCheckin,
   judging,
   lastSyncAt,
   lastSyncFailed,
@@ -20,6 +21,7 @@ import {
   overlay,
   override,
   records,
+  rehearsal,
   type Screen,
   screen,
   snapshots,
@@ -27,7 +29,7 @@ import {
   syncInFlight,
   vibrationEnabled,
 } from "../state/model.ts";
-import { clearForLogout, openDatabase, readData, readMeta, writeMeta } from "../storage/db.ts";
+import { openDatabase, readData, readMeta } from "../storage/db.ts";
 import {
   appShellTick,
   checkForUpdate,
@@ -38,7 +40,7 @@ import {
 } from "./app-shell.ts";
 import { handleBack } from "./navigation.ts";
 import { initReception, refreshReception } from "./reception.ts";
-import { enqueue, fatal, go, rt, setOverlay } from "./runtime.ts";
+import { closeDatabase, enqueue, fatal, go, openedDatabase, rt, selectStore, setOverlay } from "./runtime.ts";
 import { onHidden, scanTick } from "./scan.ts";
 import { abortSync, deferNextSync, distributionQueued, resetSync, runSync, syncTick } from "./sync.ts";
 
@@ -73,11 +75,6 @@ export function tick(): void {
 function stopSchedule(): void {
   stopTicker?.();
   stopTicker = null;
-}
-
-function closeDatabase(): void {
-  rt.db?.close();
-  rt.db = null;
 }
 
 /**
@@ -143,11 +140,12 @@ async function start(): Promise<void> {
     platform.reload();
     return;
   }
-  rt.db = opened.db;
+  openedDatabase(opened.db);
   let meta = await readMeta(opened.db, platform.randomUUID);
   deviceId.value = meta.deviceId;
   soundEnabled.value = meta.sound;
   vibrationEnabled.value = meta.vibration;
+  fastCheckin.value = meta.fastCheckin;
 
   // Discord から戻ってきた
   const login = platform.loginParam();
@@ -182,6 +180,11 @@ async function start(): Promise<void> {
   rt.releaseLock = release;
   // ロックを持っていた画面が、2 の後にログアウトで消していることがある。読み直す
   meta = await readMeta(opened.db, platform.randomUUID);
+  // 端末の設定も、読み直した値にする。ロックを待つ間に、ロックを持っていた画面が変えていることがある。
+  // 入れ直さないと、端末の設定は通常受付なのに、この画面だけが確認（S03-D1）を挟まずにチェックインする
+  soundEnabled.value = meta.sound;
+  vibrationEnabled.value = meta.vibration;
+  fastCheckin.value = meta.fastCheckin;
   const current = fetched ?? meta.operator;
   if (current === null) {
     release();
@@ -191,7 +194,7 @@ async function start(): Promise<void> {
   rt.loginEpoch = meta.loginEpoch;
   if (fetched !== null) {
     const value = fetched;
-    await enqueue((db) => writeMeta(db, "operator", value));
+    await enqueue((store) => store.writeMeta("operator", value));
   }
   const data = await readData(opened.db);
   resetSync();
@@ -202,7 +205,10 @@ async function start(): Promise<void> {
   lastSyncAt.value = meta.lastSyncAt;
   config.value = data.config;
   snapshots.value = data.snapshots;
-  records.value = data.records;
+  // リハーサルモードは、再読み込みの後も続ける。記憶域を、記録をメモリに置くものにする。その間に作った記録は、
+  // メモリにしかなかったので、空から始まる
+  rehearsal.value = meta.rehearsal;
+  records.value = meta.rehearsal ? await selectStore(true).readRecords() : data.records;
   needsLogin.value = false;
   lastSyncFailed.value = false;
   now.value = platform.now();
@@ -326,7 +332,7 @@ export async function logout(): Promise<void> {
   rt.loginEpoch++;
   const epoch = rt.loginEpoch;
   // 2. 消去を列に入れる。先に列にある処理は、ログインの番号の照合で、何も書かずに終える
-  await enqueue((db) => clearForLogout(db, epoch), { ignoreEpoch: true });
+  await enqueue((store) => store.clearForLogout(epoch), { ignoreEpoch: true });
   busy.value = false;
   if (rt.failed) return;
   // 3. 接続を閉じ、ロックを外して、POST /auth/logout を送る
@@ -344,6 +350,7 @@ export async function logout(): Promise<void> {
   config.value = null;
   snapshots.value = [];
   records.value = [];
+  rehearsal.value = false;
   confirmedReception.value = { reception: null, manual: false };
   syncInFlight.value = false;
   needsLogin.value = false;

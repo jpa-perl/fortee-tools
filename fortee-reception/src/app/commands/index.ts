@@ -29,6 +29,8 @@ export {
 } from "./reception.ts";
 export {
   attachCameraVideo,
+  cancelQrCheckin,
+  confirmQrCheckin,
   confirmSearchCheckin,
   confirmSuggestedSwitch,
   nextFromResult,
@@ -38,5 +40,6 @@ export {
   startScan,
   stopScan,
 } from "./scan.ts";
+export { confirmModeChange, openRehearsalExit, requestFastCheckin, requestRehearsal } from "./modes.ts";
 export { boot, logout, openLogoutConfirm, retryPrepare, startLogin, startRelogin } from "./session.ts";
 export { setSoundEnabled, setVibrationEnabled, testSound } from "./settings.ts";
