@@ -55,6 +55,10 @@ async function expectReachable(container: Locator): Promise<void> {
 async function expectSheetIntact(page: Page): Promise<void> {
   const dialog = page.getByRole("dialog");
   await settle(page);
+  // 開く動き（200ms）が終わってから測る。遅い環境では、シートが出るのが遅れ、settle の待ち時間の後も動きの途中に
+  // あって、下端が表示領域の外にあることがある
+  await expect(dialog).toBeVisible();
+  await dialog.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)));
   const box = await dialog.evaluate((element) => {
     const { top, bottom, left, right } = element.getBoundingClientRect();
     const overflows = element.scrollHeight > element.clientHeight + 1;
