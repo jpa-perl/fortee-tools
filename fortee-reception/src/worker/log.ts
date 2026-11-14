@@ -2,7 +2,8 @@ import { createMiddleware } from "hono/factory";
 import type { AppEnv } from "./env.ts";
 
 // Workers Logs に出す、要求 1 件につき 1 行の構造化ログ（Design Doc 7.6）。
-// 出すのは、ルート、状態コード、端末 ID、送られた記録の件数、返した記録の件数、処理時間と、
+// 出すのは、ルート、状態コード、端末 ID、送られた記録の件数、そのうち操作者がセッションと違う件数、
+// 返した記録の件数、処理時間と、
 // 失敗の種類を表す短い語だけである。記録の中身、スナップショット、Cookie、Discord の認可コードと
 // トークンは出さない。ルートにはパスだけを使い、クエリ（認可コードと state が入る）は出さない。
 
@@ -11,6 +12,11 @@ export type LogFields = {
   deviceId?: string;
   /** 送られた記録の件数 */
   sent?: number;
+  /**
+   * 送られた記録のうち、操作者 ID がセッションの操作者と違うものの件数。0 件なら出さない。
+   * 記録の操作者はセッションと照合せずに保存する（Design Doc 2.3）ので、食い違いを後から調べる手がかりとして残す
+   */
+  otherOperators?: number;
   /** 返した記録の件数 */
   returned?: number;
   /** 400 のとき、スキーマの検証で失敗した項目のパス */

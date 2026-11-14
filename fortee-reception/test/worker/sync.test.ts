@@ -581,6 +581,19 @@ describe("ログ（Design Doc 7.6）", () => {
     }
   });
 
+  it("操作者がセッションと違う記録は、拒まずに保存して、件数だけを出す", async () => {
+    const lines = captureLogs();
+    const session = await validSession();
+    const other = "999999999999999999";
+    const res = await postSync(syncBody({ records: [checkin(), checkin({ operatorId: other }), checkin({ operatorId: other })] }), { session });
+    expect(res.status).toBe(200);
+
+    const line = lines()[0]!;
+    expect(JSON.parse(line)).toMatchObject({ status: 200, sent: 3, otherOperators: 2, returned: 3 });
+    // 操作者の ID そのものは出さない
+    expect(line).not.toContain(other);
+  });
+
   it("400 では、スキーマの検証で失敗した項目のパスだけを出す", async () => {
     const lines = captureLogs();
     await postSync({ ...syncBody(), appVersion: "secret-value".repeat(10), records: [{ ...checkin(), ticketToken: "secret-token" }] });

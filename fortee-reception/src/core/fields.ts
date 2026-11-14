@@ -6,8 +6,11 @@ import * as z from "zod/mini";
 /** UUID の形。端末が crypto.randomUUID() で作る小文字の表記に限る（Design Doc 9.1） */
 export const uuidSchema = z.string().check(z.regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/));
 
-/** チケットトークン。fortee が発行する英数字 32 文字（PRD 7.1） */
-export const ticketTokenSchema = z.string().check(z.regex(/^[0-9A-Za-z]{32}$/));
+/** チケットトークン。fortee が発行する英数字 32 文字（PRD 7.1）。URL の正規表現に埋め込むための、前後の固定のない形 */
+export const TICKET_TOKEN_SOURCE = "[0-9A-Za-z]{32}";
+/** チケットトークンの全体に一致する正規表現。fortee の profile_url_token も同じ形である */
+export const TICKET_TOKEN_PATTERN = new RegExp(`^${TICKET_TOKEN_SOURCE}$`);
+export const ticketTokenSchema = z.string().check(z.regex(TICKET_TOKEN_PATTERN));
 
 /** 受付の id と、イベントの key。英数字、`-`、`_` の 1〜32 文字（Design Doc 4.2） */
 export const identifierSchema = z.string().check(z.regex(/^[0-9A-Za-z_-]{1,32}$/));

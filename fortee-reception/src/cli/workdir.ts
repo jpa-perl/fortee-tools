@@ -1,8 +1,8 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { TICKET_TOKEN_PATTERN } from "../core/fields.ts";
 import { type Snapshot, snapshotSchema } from "../core/snapshot.ts";
 import { CliError } from "./errors.ts";
-import { TOKEN_PATTERN } from "./fortee-zip.ts";
 import type { Target } from "./target.ts";
 
 // 作業ディレクトリ（Design Doc 3.4、8.1）。取り込みの出力を .work/<環境名>/snapshots/{eventId}.json に置く。
@@ -85,7 +85,7 @@ export async function readProfileUrlTokens(target: Pick<Target, "workDir">, even
   }
   // 値は出さない。形だけを確かめる
   const entries = typeof raw === "object" && raw !== null && !Array.isArray(raw) ? Object.entries(raw) : null;
-  if (entries === null || !entries.every(([key, value]) => TOKEN_PATTERN.test(key) && typeof value === "string" && TOKEN_PATTERN.test(value))) {
+  if (entries === null || !entries.every(([key, value]) => TICKET_TOKEN_PATTERN.test(key) && typeof value === "string" && TICKET_TOKEN_PATTERN.test(value))) {
     throw new CliError(
       `補正ファイル ${path} が、チケットトークン（英数字 32 文字）を鍵、profile_url_token（英数字 32 文字）を値とする JSON のオブジェクトではありません`,
     );

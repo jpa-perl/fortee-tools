@@ -29,6 +29,7 @@ const OPTIONS = {
   event: { type: "string" },
   zip: { type: "string" },
   ticket: { type: "string" },
+  "ticket-token": { type: "string" },
   reception: { type: "string" },
   done: { type: "string", multiple: true },
   out: { type: "string" },
@@ -130,8 +131,8 @@ const COMMANDS: Record<string, Command> = {
   },
   preview: {
     summary: "参考情報テンプレートを描画する",
-    usage: "--event <key か id> --ticket <チケット番号> [--reception <受付の id>] [--done <イベント>:<チケット番号>]...",
-    options: ["event", "ticket", "reception", "done"],
+    usage: "--event <key か id> (--ticket <チケット番号> | --ticket-token <チケットトークン>) [--reception <受付の id>] [--done <イベント>:<チケット番号>]...",
+    options: ["event", "ticket", "ticket-token", "reception", "done"],
     config: "full",
     needsReady: false,
     run: (context) => {
@@ -141,7 +142,8 @@ const COMMANDS: Record<string, Command> = {
         configOf(context),
         {
           event: required(context.values, "event"),
-          ticket: required(context.values, "ticket"),
+          ticket: optional(context.values, "ticket"),
+          ticketToken: optional(context.values, "ticket-token"),
           reception: optional(context.values, "reception"),
           done: Array.isArray(done) ? done.filter((value): value is string => typeof value === "string") : [],
         },

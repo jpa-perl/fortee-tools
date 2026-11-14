@@ -46,11 +46,10 @@ export async function importZip(target: Target, config: ConfigBody, options: Imp
   });
   if (!result.ok) {
     // 補正ファイルの置き場所は、誤りの文言ではなくここで出す。fortee-zip はファイルを知らない
-    const needsCorrection = result.errors.some((error) => error.includes("補正ファイル"));
     throw new CliError(
       `${describeEvent(event)} に ZIP を取り込めません（${result.errors.length} 件）。スナップショットは変えていません\n` +
         result.errors.map((error) => `  ${error}`).join("\n") +
-        (needsCorrection ? `\n補正ファイル: ${profileUrlTokensPath(target, event.id)}` : ""),
+        (result.needsProfileUrlTokens ? `\n補正ファイル: ${profileUrlTokensPath(target, event.id)}` : ""),
     );
   }
   for (const warning of result.warnings) deps.warn(`警告: ${warning}`);

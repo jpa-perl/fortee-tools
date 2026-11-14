@@ -19,6 +19,10 @@ function fake(overrides: Partial<DeployDeps> = {}) {
       calls.push("status");
       return "";
     },
+    changesDigest: () => {
+      calls.push("digest");
+      return "0a1b2c3";
+    },
     describeRelease: () => {
       calls.push("describe");
       return "v1.2.0";
@@ -56,23 +60,24 @@ describe("deploy", () => {
     expect(calls).toEqual([]);
   });
 
-  it("--dangerously-allow-dirty を付けると、未コミットの変更があってもデプロイし、変更を知らせて、リリース名に -dirty を付ける", async () => {
+  it("--dangerously-allow-dirty を付けると、未コミットの変更があってもデプロイし、変更を知らせて、リリース名に -dirty と変更の要約を付ける", async () => {
     const logged: string[] = [];
     const { deps, calls, built, deployed } = fake({
       log: (line) => logged.push(line),
       uncommittedChanges: () => " M src/worker/app.ts",
     });
     await deploy(target, { allowDirty: true }, deps);
-    expect(calls).toEqual(["ready", "describe", "build", "deploy"]);
+    expect(calls).toEqual(["ready", "describe", "digest", "build", "deploy"]);
     expect(logged.join("\n")).toMatch(/未コミットの変更を含めてデプロイします[\s\S]*src\/worker\/app\.ts/);
-    expect(built[0]?.CHECKIN_RELEASE).toBe("v1.2.0-dirty");
-    expect(deployed).toEqual([["yapc-tokyo-2026", "v1.2.0-dirty"]]);
+    expect(built[0]?.CHECKIN_RELEASE).toBe("v1.2.0-dirty-0a1b2c3");
+    expect(deployed).toEqual([["yapc-tokyo-2026", "v1.2.0-dirty-0a1b2c3"]]);
   });
 
   it("--dangerously-allow-dirty を付けても、未コミットの変更がなければ、リリース名に -dirty を付けない", async () => {
-    const { deps, deployed } = fake();
+    const { deps, calls, deployed } = fake();
     await deploy(target, { allowDirty: true }, deps);
     expect(deployed).toEqual([["yapc-tokyo-2026", "v1.2.0"]]);
+    expect(calls).not.toContain("digest");
   });
 
   it("環境の印が一致しないか、マイグレーションが適用されていなければ、ビルドの前に止まる", async () => {

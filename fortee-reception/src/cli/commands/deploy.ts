@@ -1,4 +1,6 @@
 import { execFileSync, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { CliError } from "../errors.ts";
@@ -14,7 +16,8 @@ import { deployWorker } from "../wrangler.ts";
 // - 作業ツリーに未コミットの変更があるとき。見る範囲は、パッケージのディレクトリ以下に限る。
 //   リポジトリのほかの道具の作業中の変更は、デプロイする内容を変えない。
 //   --dangerously-allow-dirty を付けると、止まらずに、未コミットの変更を含めてデプロイする。
-//   コミットする前の変更を実機で確かめるためのもので、リリース名の末尾に「-dirty」を付ける
+//   コミットする前の変更を実機で確かめるためのもので、リリース名の末尾に「-dirty-」と、変更の中身から求めた
+//   7 文字を付ける。同じコミットから中身の違う変更を続けてデプロイしても、端末がどれを動かしているかが分かる
 // - 環境の印（Design Doc 3.6）が一致しないとき、CLI が持つマイグレーションが D1 に適用されていないとき
 
 const require = createRequire(import.meta.url);
@@ -34,13 +37,15 @@ export type DeployOptions = {
   allowDirty: boolean;
 };
 
-/** 未コミットの変更を含めてデプロイしたときに、リリース名の末尾に付ける印 */
+/** 未コミットの変更を含めてデプロイしたときに、リリース名の末尾に付ける印。この後に、変更の中身の要約を続ける */
 export const DIRTY_SUFFIX = "-dirty";
 
 export type DeployDeps = {
   log: (line: string) => void;
   /** パッケージのディレクトリ以下の、未コミットの変更（git status --porcelain の出力）。変更がなければ空文字 */
   uncommittedChanges: () => string;
+  /** 未コミットの変更の中身の要約（16 進の 7 文字）。中身が同じなら同じ値になる。未コミットの変更があるときだけ呼ぶ */
+  changesDigest: () => string;
   describeRelease: () => string | null;
   assertReady: (target: Target) => Promise<void>;
   build: (env: BuildEnv) => Promise<void>;
@@ -53,6 +58,27 @@ function uncommittedChanges(): string {
     return execFileSync("git", ["status", "--porcelain", "--", "."], { cwd: PROJECT_ROOT, encoding: "utf8" }).trimEnd();
   } catch {
     throw new CliError("git status を実行できません。未コミットの変更がないことを確かめられないので、デプロイしません");
+  }
+}
+
+/**
+ * 未コミットの変更の中身の要約。追跡しているファイルの HEAD からの差分と、追跡していないファイルの名前と中身から求める。
+ * 見る範囲は、uncommittedChanges() と同じく、パッケージのディレクトリ以下に限る
+ */
+function changesDigest(): string {
+  try {
+    const git = (args: string[]) => execFileSync("git", args, { cwd: PROJECT_ROOT, maxBuffer: 1024 * 1024 * 1024 });
+    const hash = createHash("sha256");
+    hash.update(git(["diff", "HEAD", "--binary", "--", "."]));
+    // 「-z」で、名前を NUL で区切る。名前はパッケージのディレクトリからの相対になる
+    const untracked = git(["ls-files", "--others", "--exclude-standard", "-z", "--", "."]).toString("utf8").split("\0");
+    for (const name of untracked.filter((entry) => entry !== "").sort()) {
+      hash.update(`\0${name}\0`);
+      hash.update(readFileSync(join(PROJECT_ROOT, name)));
+    }
+    return hash.digest("hex").slice(0, 7);
+  } catch {
+    throw new CliError("未コミットの変更の中身を読めません。リリース名を決められないので、デプロイしません");
   }
 }
 
@@ -77,6 +103,7 @@ function build(env: BuildEnv): Promise<void> {
 export const defaultDeployDeps = (log: (line: string) => void): DeployDeps => ({
   log,
   uncommittedChanges,
+  changesDigest,
   describeRelease,
   assertReady,
   build,
@@ -101,7 +128,7 @@ export async function deploy(target: Target, options: DeployOptions, deps: Deplo
   const described = deps.describeRelease();
   if (described === null) throw new CliError("リリース名を git describe から求められません。デプロイしていません");
   // 未コミットの変更を含むときは、受付アプリの表示とデプロイの記録から、そのことが分かるようにする
-  const release = changes === "" ? described : `${described}${DIRTY_SUFFIX}`;
+  const release = changes === "" ? described : `${described}${DIRTY_SUFFIX}-${deps.changesDigest()}`;
 
   deps.log(`ビルドします（環境 ${target.env}、リリース ${release}）`);
   await deps.build({ CLOUDFLARE_ENV: target.env, CHECKIN_CONFIG: target.configPath, CHECKIN_RELEASE: release });

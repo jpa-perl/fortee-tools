@@ -2,7 +2,7 @@ import { parse } from "csv-parse/sync";
 import { unzipSync } from "fflate";
 import jsQR from "jsqr";
 import { PNG } from "pngjs";
-import { NAME_MAX_LENGTH } from "../core/fields.ts";
+import { NAME_MAX_LENGTH, TICKET_TOKEN_SOURCE } from "../core/fields.ts";
 import type { Attendee, Snapshot } from "../core/snapshot.ts";
 import { DISTRIBUTION_FORMAT } from "../core/versions.ts";
 
@@ -46,9 +46,6 @@ export type ImportInput = {
   profileUrlTokens?: ReadonlyMap<string, string>;
 };
 
-/** チケットトークンと profile_url_token の形（英数字 32 文字） */
-export const TOKEN_PATTERN = /^[0-9A-Za-z]{32}$/;
-
 export type TicketTypeSummary = {
   ticketType: string;
   /** 取り込んだ行の数 */
@@ -68,7 +65,8 @@ export type ImportSummary = {
 
 export type ImportResult =
   | { ok: true; snapshot: Snapshot; summary: ImportSummary; warnings: string[] }
-  | { ok: false; errors: string[] };
+  /** needsProfileUrlTokens は、補正ファイルを書くか直すかすれば解ける誤りがあるとき（8.3 の「画像を共有する行」） */
+  | { ok: false; errors: string[]; needsProfileUrlTokens: boolean };
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -139,21 +137,21 @@ export function importForteeZip(input: ImportInput): ImportResult {
       filter: (file) => file.name.toLowerCase().endsWith(".csv") || file.name.startsWith(QR_PROFILE_DIR),
     });
   } catch {
-    return { ok: false, errors: ["ZIP として読めません"] };
+    return { ok: false, needsProfileUrlTokens: false, errors: ["ZIP として読めません"] };
   }
   // ZIP の CSV は 1 本である（data-sources.md）。0 本と 2 本以上は、どれを読むかを選ばずに止める
   const csvNames = Object.keys(entries).filter((name) => name.toLowerCase().endsWith(".csv"));
   const csvName = csvNames[0];
   if (csvName === undefined || csvNames.length !== 1) {
     const found = csvNames.length === 0 ? "ありません" : `${csvNames.length} 本あります（${csvNames.join("、")}）`;
-    return { ok: false, errors: [`ZIP の中の CSV は 1 本でなければなりませんが、${found}`] };
+    return { ok: false, needsProfileUrlTokens: false, errors: [`ZIP の中の CSV は 1 本でなければなりませんが、${found}`] };
   }
 
   // 2. CSV を読む
   const csv = readCsv(entries[csvName] as Uint8Array);
-  if (!csv.ok) return { ok: false, errors: [csv.error] };
+  if (!csv.ok) return { ok: false, needsProfileUrlTokens: false, errors: [csv.error] };
   const [header, ...rows] = csv.rows;
-  if (header === undefined) return { ok: false, errors: ["CSV が空です。ヘッダの行がありません"] };
+  if (header === undefined) return { ok: false, needsProfileUrlTokens: false, errors: ["CSV が空です。ヘッダの行がありません"] };
 
   // 3. ヘッダを検証する。列名は文字列の完全一致で比べ、前後の空白や大文字と小文字を無視しない
   const errors: string[] = [];
@@ -185,14 +183,14 @@ export function importForteeZip(input: ImportInput): ImportResult {
       `CSV のヘッダに、同じ名前の列があります（読まない列なので続けます）: ${unreadDuplicates.map(([name]) => `「${name}」`).join("、")}`,
     );
   }
-  if (errors.length > 0) return { ok: false, errors };
+  if (errors.length > 0) return { ok: false, needsProfileUrlTokens: false, errors };
 
   const indexOf = (name: string) => positions.get(name)?.[0] as number;
   const at = (row: Row, name: string) => row.cells[indexOf(name)] as string;
 
   // 4. 各行を検証し、変換する
-  const ticketUrlPattern = new RegExp(`^https://fortee\\.jp/${escapeRegExp(slug)}/attendee/([0-9A-Za-z]{32})$`);
-  const profileUrlPattern = new RegExp(`^https://fortee\\.jp/${escapeRegExp(slug)}/attendee/([0-9A-Za-z]{32})/go-profile$`);
+  const ticketUrlPattern = new RegExp(`^https://fortee\\.jp/${escapeRegExp(slug)}/attendee/(${TICKET_TOKEN_SOURCE})$`);
+  const profileUrlPattern = new RegExp(`^https://fortee\\.jp/${escapeRegExp(slug)}/attendee/(${TICKET_TOKEN_SOURCE})/go-profile$`);
 
   const attendees: Attendee[] = [];
   const seen = { ticketToken: [], ticketNo: [], profileUrlToken: [] } as Record<
@@ -322,7 +320,9 @@ export function importForteeZip(input: ImportInput): ImportResult {
     }
   }
 
-  if (errors.length > 0) return { ok: false, errors };
+  if (errors.length > 0) {
+    return { ok: false, needsProfileUrlTokens: uncorrected.length > 0 || unusedCorrections > 0, errors };
+  }
 
   // Ticket no の重複は、警告にとどめる。fortee の採番が、同じ番号を複数の参加者に付けることがある（本番で確認）。
   // 参加者はチケットトークンで特定し、チケット番号は表示、検索、並び順にしか使わない

@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ConfigBody } from "../../src/core/config-file.ts";
 import { preview, type PreviewOptions } from "../../src/cli/commands/preview.ts";
+import { readSnapshot, writeSnapshot } from "../../src/cli/workdir.ts";
 import { importSynthetic, loadLocalConfig, temporaryEnvironment, type TestEnvironment } from "./helpers.ts";
+import { SYNTHETIC_EVENT_IDS, SYNTHETIC_EVENTS, ticketTokenOf } from "./synthetic-zip.ts";
 
 // preview（Design Doc 8.7、FR-46）。作業ディレクトリのスナップショット（合成の ZIP から取り込んだもの）と、
 // ローカルの開発の設定（config/local.toml）のテンプレートで確かめる。D1 と KV には触れない。
@@ -95,7 +97,39 @@ describe("preview", () => {
     expect(text).toBe("test-grace さん（グレース）\n本編チケットなし\n前夜祭 M-4\n");
   });
 
+  it("チケットトークンでも参加者を指定できる。チケット番号が重複した参加者は、トークンで指定する", async () => {
+    const main = SYNTHETIC_EVENTS.main;
+    const byNo = await run({ event: "main", ticket: "A-1" });
+    expect((await run({ event: "main", ticketToken: ticketTokenOf(main, "A-1") })).text).toBe(byNo.text);
+
+    // fortee の採番が、A-4 を 2 人に付けた（Design Doc 8.3）
+    const duplicated = await temporaryEnvironment();
+    try {
+      const snapshot = await readSnapshot(environment.target, SYNTHETIC_EVENT_IDS.main);
+      if (snapshot === null) throw new Error("本編のスナップショットがない");
+      const a5 = ticketTokenOf(main, "A-5");
+      await writeSnapshot(duplicated.target, {
+        ...snapshot,
+        attendees: snapshot.attendees.map((attendee) => (attendee.ticketToken === a5 ? { ...attendee, ticketNo: "A-4" } : attendee)),
+      });
+      const render = (options: PreviewOptions) => {
+        let text = "";
+        return preview(duplicated.target, config, options, { now: () => NOW, out: (rendered) => (text += rendered), warn: () => {} }).then(() => text);
+      };
+      await expect(render({ event: "main", ticket: "A-4" })).rejects.toThrow(/2 枚あります。--ticket-token/);
+      const first = await render({ event: "main", ticketToken: ticketTokenOf(main, "A-4") });
+      const second = await render({ event: "main", ticketToken: a5 });
+      expect(first).not.toBe(second);
+    } finally {
+      await duplicated.cleanup();
+    }
+  });
+
   it.each<[string, PreviewOptions, RegExp]>([
+    ["チケットの指定がない", { event: "main" }, /--ticket <チケット番号> か --ticket-token <チケットトークン> の、どちらか一方/],
+    ["チケットの指定が 2 つある", { event: "main", ticket: "A-1", ticketToken: "a".repeat(32) }, /どちらか一方/],
+    ["トークンの形", { event: "main", ticketToken: "short" }, /--ticket-token は、英数字 32 文字/],
+    ["スナップショットにないトークン", { event: "main", ticketToken: "0".repeat(32) }, /--ticket-token のチケットは、テスト本編（main） のスナップショットにありません/],
     ["スナップショットにないチケット番号", { event: "main", ticket: "A-99" }, /--ticket の "A-99" は、テスト本編（main） のスナップショットにありません/],
     ["未発券の行は取り込まれていない", { event: "main", ticket: "A-3" }, /スナップショットにありません/],
     ["チケット番号は、イベントの中で引く", { event: "eve", ticket: "A-1" }, /スナップショットにありません/],

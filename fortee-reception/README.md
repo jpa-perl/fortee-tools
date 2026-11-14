@@ -119,7 +119,7 @@ npm run admin -- <コマンド> --env <環境名>
 | `validate` | — | 設定ファイルを検証し、誤りをすべて列挙する |
 | `import` | `--event <key か id> --zip <ZIP>` | fortee のダウンロード ZIP を、イベント単位でスナップショットに変換する |
 | `publish` | — | 設定と全イベントのスナップショットを公開する |
-| `preview` | `--event <key か id> --ticket <番号>` | 参考情報テンプレートを、指定した参加者で描画し、結果の HTML を出す |
+| `preview` | `--event <key か id> --ticket <番号>`（番号が重複した参加者は `--ticket-token <トークン>`） | 参考情報テンプレートを、指定した参加者で描画し、結果の HTML を出す |
 | `export` | `--out <まだないディレクトリ> [--chunk <行数>]` | 記録を集約し、一括チェックイン CSV と確認用の一覧を書き出す |
 | `restore-records` | `--from <records.json>` | DB を以前の時点に戻した後の復旧で、書き出しの `records.json` から、D1 にない記録を戻す |
 | `bump-generation` | — | DB を以前の時点に戻した後の復旧で、DB の世代を変え、端末に記録を送り直させる |

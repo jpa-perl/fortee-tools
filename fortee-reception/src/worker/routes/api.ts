@@ -48,6 +48,11 @@ export function createApiRoutes(): Hono<SessionEnv> {
     const request = parsed.data;
     log.deviceId = request.deviceId;
     log.sent = request.records.length;
+    // 記録の操作者は、セッションと照合せずに保存する（Design Doc 2.3）。DB を戻した後の送り直しと、別のアカウントでの
+    // 再ログインの後には、正しい動きとして食い違う。拒まずに、件数だけをログに残す
+    const operatorId = c.get("session").sub;
+    const otherOperators = request.records.filter((record) => record.operatorId !== operatorId).length;
+    if (otherOperators > 0) log.otherOperators = otherOperators;
 
     const now = Date.now();
     const response: SyncResponse = await runSync(c.env.DB, request, { now });
