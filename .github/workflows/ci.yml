@@ -41,7 +41,9 @@ jobs:
 
   e2e:
     name: 画面のテスト（Playwright）
-    runs-on: ubuntu-latest
+    # macOS で走らせる。セッションの Cookie は Secure 付きで、テストのサーバは http://localhost である。
+    # Linux の WebKit は、http://localhost に Secure 付きの Cookie を送らないので、ログインできない
+    runs-on: macos-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7.0.1
