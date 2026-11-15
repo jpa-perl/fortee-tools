@@ -4,6 +4,7 @@ import { get } from "node:https";
 import { join } from "node:path";
 import { type Browser, type BrowserContext, type CDPSession, chromium, type Page, webkit } from "@playwright/test";
 import { PROJECT_ROOT } from "../../src/cli/paths.ts";
+import { detectorState } from "../e2e/detector-check.ts";
 import { addSessionCookie, goOffline, scanButton } from "../e2e/helpers.ts";
 import { type QrMatrix, qrMatrix } from "../e2e/qr-matrix.ts";
 import { E2E_ENVIRONMENTS, e2eOrigin } from "../e2e/setup/data.ts";
@@ -33,6 +34,8 @@ const RUNS = Number(option("runs", "3"));
 const WINDOW_S = Number(option("window", "30"));
 const SCALE = Number(option("scale", "1"));
 const ONLY = option("only", "").split(",").filter((name) => name !== "");
+/** ブラウザの検出器（BarcodeDetector）を隠して、キャンバスと jsQR の経路で読み取らせる */
+const NO_DETECTOR = args.includes("--no-detector");
 const TICKETS = 1500 * SCALE;
 const RECORDS = 3000 * SCALE;
 
@@ -102,14 +105,44 @@ async function metricsOf(cdp: CDPSession): Promise<Metrics> {
   return Object.fromEntries(metrics.map((metric) => [metric.name, metric.value]));
 }
 
+/** ブラウザごとの、プロセスの一覧を得るための接続 */
+const browserSessions = new WeakMap<Browser, Promise<CDPSession>>();
+
+/**
+ * ブラウザのプロセス（描画、GPU、映像の取り込み、検出器を含む）ごとの、使った CPU 時間の累計（ms）。
+ * メインスレッドの処理時間には、ほかのプロセスに移った処理が入らないので、合わせて見る。
+ * プロセスの一覧は、そのブラウザ自身に尋ねる。同じ機械で動いている別のブラウザ（別の計測、開発者の Chromium、
+ * この計測が起動したもう 1 つのブラウザ）のプロセスは入らない
+ */
+async function browserCpuMs(browser: Browser): Promise<Map<number, number>> {
+  let session = browserSessions.get(browser);
+  if (session === undefined) {
+    session = browser.newBrowserCDPSession();
+    browserSessions.set(browser, session);
+  }
+  const { processInfo } = await (await session).send("SystemInfo.getProcessInfo");
+  return new Map(processInfo.map((process) => [process.id, process.cpuTime * 1000]));
+}
+
+/** 2 つの時点の間に使った CPU 時間の合計（ms）。間に始まったプロセスは、始まってからの分を数える。終わったプロセスの分は入らない */
+function cpuDeltaMs(before: Map<number, number>, after: Map<number, number>): number {
+  let total = 0;
+  for (const [pid, ms] of after) total += Math.max(0, ms - (before.get(pid) ?? 0));
+  return Math.round(total);
+}
+
 const WINDOW_KEYS = ["TaskDuration", "ScriptDuration", "LayoutDuration", "RecalcStyleDuration", "LayoutCount", "RecalcStyleCount"];
 
 /** 決まった時間の間の、処理時間（ms）と回数の増分。終わりの時点の DOM の要素数とヒープも添える */
 async function measureWindow(page: Page, cdp: CDPSession, seconds: number): Promise<Metrics> {
   const before = await metricsOf(cdp);
+  const browser = page.context().browser();
+  if (browser === null) throw new Error("ブラウザを得られない");
+  const cpuBefore = await browserCpuMs(browser);
   await page.waitForTimeout(seconds * 1000);
+  const cpuAfter = await browserCpuMs(browser);
   const after = await metricsOf(cdp);
-  const result: Metrics = { seconds };
+  const result: Metrics = { seconds, BrowserCpuMs: cpuDeltaMs(cpuBefore, cpuAfter) };
   for (const key of WINDOW_KEYS) {
     const delta = (after[key] ?? 0) - (before[key] ?? 0);
     result[key] = key.endsWith("Duration") ? Math.round(delta * 1000 * 10) / 10 : delta;
@@ -158,6 +191,11 @@ async function open(browser: Browser): Promise<Session> {
     permissions: ["camera"],
     serviceWorkers: "allow",
   });
+  if (NO_DETECTOR) {
+    await context.addInitScript(() => {
+      delete (globalThis as { BarcodeDetector?: unknown }).BarcodeDetector;
+    });
+  }
   const page = await context.newPage();
   await addSessionCookie(context, baseURL);
   await page.goto("/?login=ok");
@@ -366,8 +404,10 @@ const scenarios: Record<string, (browser: Browser, qrBrowser: Browser) => Promis
       await page.getByRole("button", { name: "次へ", exact: true }).click();
       tapped = Date.now();
     }
+    // どちらの経路で読み取ったか。受付アプリと同じ条件で、検出器が使えるかを確かめる
+    const detector = await detectorState(page);
     await context.close();
-    return { scanToResult, tapToResult };
+    return { detector, scanToResult, tapToResult };
   },
 
   /** 読み取りの 1 回の処理の内訳。実際の映像の要素から、アプリと同じ手順で取り出す */
@@ -401,7 +441,7 @@ async function decoder(): Promise<unknown> {
 // ───────── 実行 ─────────
 
 const wanted = (name: string): boolean => ONLY.length === 0 || ONLY.includes(name);
-const results: Record<string, unknown> = { label, runs: RUNS, windowSeconds: WINDOW_S, tickets: TICKETS, records: RECORDS };
+const results: Record<string, unknown> = { label, noDetector: NO_DETECTOR, runs: RUNS, windowSeconds: WINDOW_S, tickets: TICKETS, records: RECORDS };
 
 if (wanted("decoder")) {
   results.decoder = await decoder();

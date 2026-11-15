@@ -149,8 +149,33 @@ export async function pipelineBench(input: { iterations: number }): Promise<Reco
     totals[variant].push(performance.now() - start);
   };
 
+  // コマのあいだの変化の量の概算（読み取りの頻度を、変化の量で変える案の費用）。映像を 32×24 に縮めて、
+  // 前のコマとの明るさの差の平均を取る
+  const [tinyW, tinyH] = [32, 24];
+  const tiny = document.createElement("canvas");
+  tiny.width = tinyW;
+  tiny.height = tinyH;
+  const tinyContext = tiny.getContext("2d", { willReadFrequently: true });
+  if (tinyContext === null) throw new Error("文脈を取れない");
+  let previous: Uint8ClampedArray | null = null;
+  let signatureMs = 0;
+  const changes: number[] = [];
+  const signature = (): void => {
+    const start = performance.now();
+    tinyContext.drawImage(video, sx, sy, sw, sh, 0, 0, tinyW, tinyH);
+    const data = tinyContext.getImageData(0, 0, tinyW, tinyH).data;
+    if (previous !== null) {
+      let sum = 0;
+      for (let p = 0; p < data.length; p += 4) sum += Math.abs((data[p + 1] ?? 0) - (previous[p + 1] ?? 0));
+      changes.push(sum / (tinyW * tinyH));
+    }
+    previous = data;
+    signatureMs += performance.now() - start;
+  };
+
   for (let i = 0; i < input.iterations; i++) {
     once(i % 2 === 0 ? "current" : "reuse");
+    signature();
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   const round = (value: number): number => Math.round(value * 1000) / 1000;
@@ -168,6 +193,11 @@ export async function pipelineBench(input: { iterations: number }): Promise<Reco
     decode: { width, height },
     current: summarize("current"),
     reuse: summarize("reuse"),
+    signature: {
+      ms: round(signatureMs / input.iterations),
+      changeMedian: round([...changes].sort((a, b) => a - b)[Math.floor(changes.length / 2)] ?? 0),
+      changeMax: round(Math.max(...changes)),
+    },
   };
 }
 

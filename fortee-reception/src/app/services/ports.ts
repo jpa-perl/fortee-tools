@@ -58,6 +58,16 @@ export type Feedback = {
 /** 「画像を受け取り文字列か null を返す」関数（Design Doc 6.8 の継ぎ目） */
 export type QrDecoder = (image: ImageData) => string | null;
 
+/**
+ * 映像のコマから、QR を直接探す関数（ブラウザの BarcodeDetector）。画像を画素の配列に取り出さずに済む。
+ * visible は、領域に見えている範囲（映像の画素の座標）で、この範囲に収まっている QR だけを返す。
+ * 失敗（例外）は、呼び出し側が、以後 QrDecoder に切り替える合図にする
+ */
+export type FrameDetector = (
+  video: HTMLVideoElement,
+  visible: { x: number; y: number; width: number; height: number },
+) => Promise<string | null>;
+
 export type Camera = {
   /** 映像を出す要素を渡す。外すときは null */
   attach(video: HTMLVideoElement | null): void;

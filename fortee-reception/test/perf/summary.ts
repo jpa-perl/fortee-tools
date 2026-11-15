@@ -49,6 +49,8 @@ const rows: [string, string, string[]][] = [
   ["検索の入力 ms", "search", ["keystrokes"]],
   ["検索の入力（CPU 4 倍遅）ms", "search", ["keystrokesX4"]],
   ["読み取り中（QR なし）: 処理時間 ms / 窓", "scanNoQr", ["TaskDuration"]],
+  ["読み取り中（QR なし）: ブラウザの全プロセスの CPU 時間 ms / 窓", "scanNoQr", ["BrowserCpuMs"]],
+  ["ホームで待機: ブラウザの全プロセスの CPU 時間 ms / 窓", "idle", ["BrowserCpuMs"]],
   ["読み取り中に「終了」: 処理開始までの待ち（CPU 4 倍遅）ms", "scanTap", ["delay"]],
   ["読み取り中に「終了」: 次の描画まで（CPU 4 倍遅）ms", "scanTap", ["duration"]],
   ["結果を表示したまま待機: 処理時間 ms / 窓", "result", ["shown", "TaskDuration"]],
