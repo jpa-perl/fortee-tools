@@ -37,6 +37,7 @@ const OPTIONS = {
   "drift-threshold": { type: "string" },
   from: { type: "string" },
   "dangerously-allow-dirty": { type: "boolean" },
+  "skip-remote-preflight": { type: "boolean" },
 } as const;
 
 type OptionName = keyof typeof OPTIONS;
@@ -198,12 +199,19 @@ const COMMANDS: Record<string, Command> = {
   // deploy は、未コミットの変更を確かめてから、環境の印とマイグレーションを自分で照合する
   deploy: {
     summary: "ビルドしてデプロイする",
-    usage: "[--dangerously-allow-dirty]",
-    options: ["dangerously-allow-dirty"],
+    usage: "[--dangerously-allow-dirty] [--skip-remote-preflight]",
+    options: ["dangerously-allow-dirty", "skip-remote-preflight"],
     config: "head",
     needsReady: false,
     run: ({ target, values }) =>
-      deploy(target, { allowDirty: values["dangerously-allow-dirty"] === true }, defaultDeployDeps(log)),
+      deploy(
+        target,
+        {
+          allowDirty: values["dangerously-allow-dirty"] === true,
+          skipRemotePreflight: values["skip-remote-preflight"] === true,
+        },
+        defaultDeployDeps(log),
+      ),
   },
 };
 

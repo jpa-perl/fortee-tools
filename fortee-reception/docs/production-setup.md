@@ -258,15 +258,15 @@ https://checkin-<環境名>.<アカウントのサブドメイン>.workers.dev/a
 
 `main` への push で、GitHub Actions（リポジトリの直下の `.github/workflows/deploy.yml`）が、CI の通過後に 5.2 と同じ `deploy` を実行する（開発・環境構築手順書 8 章）。マイグレーションの適用（5.1）と秘密の設定（5.3）は行わない。使うには、次の 3 つを用意する。
 
-1. デプロイ専用の API トークンを作る。管理者のトークン（2.2）は使い回さない。権限は次のとおりにし、対象のアカウントをその環境のアカウントに限る
+1. デプロイ専用の API トークンを作る。管理者のトークン（2.2）は使い回さない。対象のアカウントをその環境のアカウントに限り、権限は Workers Scripts の Edit だけにする。リソースは、その環境の Worker（`checkin-<環境名>`）だけを指す Specific Workers に絞ってよい。D1 と Workers KV Storage の権限は付けない
 
-   | 権限 | 使う操作 |
-   | --- | --- |
-   | Workers Scripts の Edit | デプロイ |
-   | D1 の Read | 環境の印と、適用済みのマイグレーションの照合 |
-   | Workers KV Storage の Read | 環境の印の照合 |
+   GitHub Actions の `deploy` は `--skip-remote-preflight` を付けて、D1 と KV を Cloudflare の API から直接読む事前検査（環境の印とマイグレーションの照合）を省く。D1 と KV の REST API は、Worker に絞ったトークンでは通らず、コード 7403（`The given account is not valid or is not authorized to access this service`）で止まったためである。この検査を省いても、未コミットの変更の検査と、設定ファイルの環境名の照合は行う。省いた分は、次の運用で補う
+   - マイグレーションは、`main` へ入れる前に、管理者が手元で `migrate --env <環境名>` を実行しておく。CD は適用も照合もしない。未適用のまま Worker をデプロイすると、新しい Worker が古いスキーマを読む
+   - 環境の取り違えは、`wrangler.jsonc` の `env` の `account_id`、D1 と KV の ID を変えるレビューと、環境の印を照合する管理者の手元の `deploy`（検査あり）で防ぐ。CD は、`deploy.yml` に書いた環境名の Worker にしか、デプロイしない
 
-   D1 と KV が Read で足りるか、ほかに要る権限があるかは、まだ確かめていない。workflow が権限の不足で止まったら、止まった操作に要る権限を足し、この表を直す
+   管理者の手元の `deploy` は、`--skip-remote-preflight` を付けない。D1 と KV の Read を持つ管理者のトークン（2.2）で、検査を通す
+
+   確かめていないこと: Specific Workers に絞った Workers Scripts の Edit だけで、既存の Worker のデプロイ（静的アセットのアップロードを含む）が通ること。Cloudflare の公式ドキュメントには、Specific Workers の権限範囲と、`wrangler deploy` が呼ぶ API の一覧は、見つからなかった。最初の実行で止まったら、止まった操作に要る権限を足し、この表を直す。新しい Worker を作るには、既存の Worker を指す Specific Workers では足りない可能性がある。新しい環境の最初のデプロイは、管理者の手元で行う
 
 2. GitHub のリポジトリの Settings の Environments で、環境名と同じ名前の Environment を作る。Deployment branches and tags を Selected branches and tags にし、`main` だけを足す。このリポジトリは公開するので、`main` のほかのブランチの workflow からトークンを読めないようにするためである
 3. その Environment の secret に、`CLOUDFLARE_API_TOKEN` の名前で、1 のトークンを入れる。リポジトリの secret には入れない

@@ -3,8 +3,9 @@ name: Deploy
 # fortee-reception を、Cloudflare の環境にデプロイする（fortee-reception/docs/dev-setup.md の 8 章）。
 # fortee-reception/ 以下を変える main への push で、CI（ci.yml）が通った後に、管理 CLI の deploy を実行する。手でも実行できる（workflow_dispatch）。
 #
-# - マイグレーションは適用しない。未適用のマイグレーションがあると、deploy は検査で止まる。
-#   管理者が、手元で migrate を実行してから、この workflow を main で手で実行する
+# - マイグレーションは適用しない。管理者が、デプロイの前に、手元で migrate を実行する
+# - トークンは Specific Workers に絞るので、D1 と KV を直接読む事前検査（環境の印とマイグレーションの照合）は、
+#   --skip-remote-preflight で省く。管理者の手元の deploy は、検査を省かない（production-setup 5.5）
 # - Cloudflare の API トークンは、GitHub の Environment（環境名と同じ名前）の secret に置く。
 #   Environment は、デプロイできるブランチを main に限る（production-setup 5.5）
 
@@ -49,6 +50,6 @@ jobs:
           cache: npm
           cache-dependency-path: fortee-reception/package-lock.json
       - run: npm ci
-      - run: npm run admin -- deploy --env yapc-tokyo-2026
+      - run: npm run admin -- deploy --env yapc-tokyo-2026 --skip-remote-preflight
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

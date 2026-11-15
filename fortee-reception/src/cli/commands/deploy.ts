@@ -18,7 +18,10 @@ import { deployWorker } from "../wrangler.ts";
 //   --dangerously-allow-dirty を付けると、止まらずに、未コミットの変更を含めてデプロイする。
 //   コミットする前の変更を実機で確かめるためのもので、リリース名の末尾に「-dirty-」と、変更の中身から求めた
 //   7 文字を付ける。同じコミットから中身の違う変更を続けてデプロイしても、端末がどれを動かしているかが分かる
-// - 環境の印（Design Doc 3.6）が一致しないとき、CLI が持つマイグレーションが D1 に適用されていないとき
+// - 環境の印（Design Doc 3.6）が一致しないとき、CLI が持つマイグレーションが D1 に適用されていないとき。
+//   この 2 つの検査は、D1 と KV を Cloudflare の API から直接読む。Specific Workers に絞ったトークンでは読めないので、
+//   GitHub Actions からのデプロイだけが、--skip-remote-preflight で明示して省く（Design Doc 8.1）。
+//   省いても、未コミットの変更の検査と、設定ファイルの環境名の照合（main.ts）は行う
 
 const require = createRequire(import.meta.url);
 
@@ -35,6 +38,11 @@ export type BuildEnv = {
 export type DeployOptions = {
   /** 未コミットの変更があっても、止まらずにデプロイする（--dangerously-allow-dirty） */
   allowDirty: boolean;
+  /**
+   * D1 と KV を直接読む事前検査（環境の印とマイグレーション）を省く（--skip-remote-preflight）。
+   * D1 と KV の読み取り権限を持たない、Worker に絞ったトークンの CD のためのもの。明示したときだけ省く
+   */
+  skipRemotePreflight: boolean;
 };
 
 /** 未コミットの変更を含めてデプロイしたときに、リリース名の末尾に付ける印。この後に、変更の中身の要約を続ける */
@@ -123,7 +131,14 @@ export async function deploy(target: Target, options: DeployOptions, deps: Deplo
     deps.log(`未コミットの変更を含めてデプロイします。デプロイする内容は、どのコミットとも一致しません\n${changes}`);
   }
 
-  await deps.assertReady(target);
+  if (options.skipRemotePreflight) {
+    deps.log(
+      "--skip-remote-preflight: D1 と KV の環境の印と、マイグレーションの適用状況を確かめません。" +
+        `事前に migrate --env ${target.env} を実行済みであることは、管理者が保証してください`,
+    );
+  } else {
+    await deps.assertReady(target);
+  }
 
   const described = deps.describeRelease();
   if (described === null) throw new CliError("リリース名を git describe から求められません。デプロイしていません");

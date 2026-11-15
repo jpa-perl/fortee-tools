@@ -220,7 +220,7 @@ git worktree add ../checkin-<環境名> <コミット>
 | --- | --- | --- |
 | Discord のクライアントシークレット、ギルド ID、ロール ID、`SESSION_SECRET` | 環境ごとの Worker の secret。ローカルは `.dev.vars` | リポジトリに置かない（FR-5）。Discord の値はローカルも本番と同じで、開発者が善良に管理する（4.1）。名前は Design Doc 3.6 |
 | Cloudflare の API トークン | 管理者の端末の環境変数 | 管理者ごとに、その管理者のロールが持つ権限のうち、操作に要る権限だけを持つものを作る（バックエンド 4 章）。リポジトリとシェルの履歴に残さない |
-| GitHub Actions がデプロイに使う Cloudflare の API トークン | GitHub の Environment（環境名と同じ名前）の secret `CLOUDFLARE_API_TOKEN` | 管理者のトークンとは別に、デプロイに要る権限だけを持つものを作る。Environment は、デプロイできるブランチを `main` に限る（本番構築 5.5） |
+| GitHub Actions がデプロイに使う Cloudflare の API トークン | GitHub の Environment（環境名と同じ名前）の secret `CLOUDFLARE_API_TOKEN` | 管理者のトークンとは別に、Workers Scripts の Edit だけを、その環境の Worker に絞って持つものを作る（D1 と KV の権限は付けない。`deploy` に `--skip-remote-preflight` を付けて、D1 と KV の事前検査を省く）。Environment は、デプロイできるブランチを `main` に限る（本番構築 5.5） |
 | 書き出しのファイル、取り込む ZIP、作業ディレクトリ（`.work/<環境名>/`） | 管理者の端末 | 参加者の情報を含む。リポジトリに置かず、保持期間（PRD 7.4）の後に消す（10 章） |
 
 `SESSION_SECRET` を差し替えると、その環境の全端末が再ログインになる（Design Doc 7.2）。ロールを外したスタッフのセッションをすぐに止めたいときの手段であり、端末のデータは消えない。
