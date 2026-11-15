@@ -12,6 +12,8 @@ import { defineConfig, devices } from "@playwright/test";
 // 別のデータを持つ SYNC を、1 つのプロジェクトで直列に使う
 const PORT = 4173;
 const SYNC_PORT = 4174;
+// 127.0.0.1 に解決される名前。test/e2e/setup/data.ts の E2E_HOST と揃える。
+const HOST = "localhost.dev.yapcjapan.org";
 const SYNC_SPEC = /sync\.spec\.ts$/;
 
 // デザイン基準幅 390px と、最小対応幅 360px（画面設計書 1.2）
@@ -21,7 +23,11 @@ const viewports = { "390": { width: 390, height: 844 }, "360": { width: 360, hei
 // WebKit は、テストではカメラを開始できない。カメラの使用が拒否された端末の流れ（FR-27）を通すことになる
 const fakeCamera = {
   permissions: ["camera"],
-  launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] },
+  launchOptions: {
+    // ignoreHTTPSErrors だけでは、Chromium の Service Worker のスクリプト取得は自己署名証明書を拒む。
+    // E2E 専用のブラウザプロセスで許容し、事前のキャッシュと更新も HTTPS で確かめる。
+    args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--ignore-certificate-errors"],
+  },
 };
 
 export default defineConfig({
@@ -31,7 +37,9 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   reporter: "list",
   use: {
-    baseURL: `http://localhost:${PORT}`,
+    baseURL: `https://${HOST}:${PORT}`,
+    // E2E サーバが毎回生成する自己署名証明書を、このテストのブラウザだけで許容する
+    ignoreHTTPSErrors: true,
     locale: "ja-JP",
     // Service Worker を確かめるので、止めない
     serviceWorkers: "allow",
@@ -50,7 +58,7 @@ export default defineConfig({
         ...devices["Desktop Chrome"],
         viewport: viewports["390"],
         ...fakeCamera,
-        baseURL: `http://localhost:${SYNC_PORT}`,
+        baseURL: `https://${HOST}:${SYNC_PORT}`,
       },
     },
   ],
@@ -58,7 +66,8 @@ export default defineConfig({
     // データを公開し直してから、ビルドして、ビルドした Worker と静的アセットを、2 つのポートで配る。
     // serve.ts は、MAIN のサーバが応えてから SYNC のサーバを起動する。SYNC が応えるのを待てば、両方が応えている
     command: "node test/e2e/setup/serve.ts",
-    url: `http://localhost:${SYNC_PORT}`,
+    url: `https://${HOST}:${SYNC_PORT}`,
+    ignoreHTTPSErrors: true,
     // 別のデータや別の秘密で動いているサーバを、拾わない
     reuseExistingServer: false,
     timeout: 180_000,

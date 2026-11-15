@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { createServer, request as httpRequest, type Server } from "node:http";
+import { createServer, request as httpsRequest, type Server } from "node:https";
 import type { AddressInfo } from "node:net";
 import { extname, join } from "node:path";
-import { E2E_ENVIRONMENTS } from "./data.ts";
+import { E2E_ENVIRONMENTS, E2E_HOST, e2eOrigin } from "./data.ts";
+import { readTlsOptions } from "./tls.ts";
 
 // Service Worker の更新を確かめるためのサーバ（Design Doc 6.11、11 章）。
 //
@@ -15,7 +16,7 @@ import { E2E_ENVIRONMENTS } from "./data.ts";
 // ロックは、ほかの spec と分かれる
 
 const CLIENT = join(process.cwd(), "dist/client");
-const UPSTREAM = { host: "localhost", port: E2E_ENVIRONMENTS.main.port };
+const UPSTREAM = { host: E2E_HOST, port: E2E_ENVIRONMENTS.main.port };
 const CONTENT_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -54,6 +55,7 @@ export type ShellSite = {
 };
 
 export async function serveShell(): Promise<ShellSite> {
+  const tls = await readTlsOptions();
   const html1 = await readFile(join(CLIENT, "index.html"), "utf8");
   const sw1 = await readFile(join(CLIENT, "sw.js"), "utf8");
   const version1 = /"version":"([0-9a-f]+)"/.exec(sw1)?.[1];
@@ -84,8 +86,8 @@ export async function serveShell(): Promise<ShellSite> {
       }),
   };
 
-  const server: Server = createServer((req, res) => {
-    const path = new URL(req.url ?? "/", "http://localhost").pathname;
+  const server: Server = createServer(tls, (req, res) => {
+    const path = new URL(req.url ?? "/", site.origin).pathname;
 
     if (path.startsWith("/api/") || path.startsWith("/auth/")) {
       if ((site.failSync || site.unauthorizedSync) && path === "/api/sync") {
@@ -94,10 +96,10 @@ export async function serveShell(): Promise<ShellSite> {
         return;
       }
       // Worker は、同じオリジンからの要求だけを受け付ける。取り次ぎ先のオリジンに書き換える
-      const upstreamOrigin = `http://${UPSTREAM.host}:${UPSTREAM.port}`;
+      const upstreamOrigin = e2eOrigin(UPSTREAM.port);
       const headers = { ...req.headers, host: `${UPSTREAM.host}:${UPSTREAM.port}` };
       if (headers.origin !== undefined) headers.origin = upstreamOrigin;
-      const upstream = httpRequest({ ...UPSTREAM, path: req.url, method: req.method, headers }, (response) => {
+      const upstream = httpsRequest({ ...UPSTREAM, ca: tls.cert, path: req.url, method: req.method, headers }, (response) => {
         res.writeHead(response.statusCode ?? 502, response.headers);
         response.pipe(res);
       });
@@ -135,6 +137,6 @@ export async function serveShell(): Promise<ShellSite> {
     );
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  site.origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  site.origin = e2eOrigin((server.address() as AddressInfo).port);
   return site;
 }

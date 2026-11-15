@@ -12,6 +12,11 @@ import {
 // 画面のテスト（Playwright）のデータ。準備（prepare.ts）と、テストの両方が読む。
 // 参加者は test/cli/synthetic-zip.ts の合成のイベントで、対象外（FR-10）のための託児所だけを足している。
 
+// 127.0.0.1 に解決される名前。localhost 固有の Cookie / secure context の例外を使わない。
+// playwright.config.ts の HOST と揃える。
+export const E2E_HOST = "localhost.dev.yapcjapan.org";
+export const e2eOrigin = (port: number): string => `https://${E2E_HOST}:${port}`;
+
 /**
  * 画面のテストの環境。ローカルの D1 と KV、作業ディレクトリを、環境ごとに別の場所に置く。
  * 開発の .wrangler/state と .work/ には触れない。環境は 2 つある。

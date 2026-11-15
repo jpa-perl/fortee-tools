@@ -1,7 +1,39 @@
 import { devices, expect, test } from "@playwright/test";
-import { addSessionCookie, expectNoA11yViolations, login, scanButton, shot } from "./helpers.ts";
+import { addSessionCookie, expectNoA11yViolations, login, OPERATOR, scanButton, shot } from "./helpers.ts";
+import { E2E_HOST } from "./setup/data.ts";
 
 // 開き方の案内（S00）、ログイン（S01）の状態、2 つの画面の重なり（Design Doc 6.4、NFR-8、9）。
+
+test("S01: HTTPS で Secure Cookie を送り、同期で更新された Cookie でも認証できる", async ({ page, context, baseURL }) => {
+  if (baseURL === undefined) throw new Error("baseURL がない");
+  await addSessionCookie(context, baseURL);
+  const original = (await context.cookies(baseURL)).find((cookie) => cookie.name === "__Host-session");
+  expect(original).toBeDefined();
+
+  await page.goto("/?login=ok");
+  expect(new URL(page.url()).protocol).toBe("https:");
+  expect(new URL(page.url()).hostname).toBe(E2E_HOST);
+  await expect(scanButton(page)).toBeVisible();
+  // テストで置いた Cookie は残り 1 日なので、初回の同期でサーバが有効期限を延ばして発行し直す。
+  // addCookies で置けるだけでなく、Set-Cookie をブラウザが受け入れることも確かめる。
+  await expect.poll(async () => {
+    const renewed = (await context.cookies(baseURL)).find((cookie) => cookie.name === "__Host-session");
+    return renewed !== undefined && renewed.value !== original?.value;
+  }).toBe(true);
+  expect((await context.cookies(baseURL)).find((cookie) => cookie.name === "__Host-session")).toMatchObject({
+    domain: new URL(baseURL).hostname,
+    path: "/",
+    secure: true,
+    httpOnly: true,
+    sameSite: "Lax",
+  });
+  // APIRequestContext ではなく、ページからの実際の要求で更新後の Cookie の送信を確かめる。
+  const me = await page.evaluate(async () => {
+    const response = await fetch("/api/me");
+    return { status: response.status, body: await response.json() as unknown };
+  });
+  expect(me).toEqual({ status: 200, body: { operatorId: OPERATOR.sub, operatorName: OPERATOR.name } });
+});
 
 test("S00: iOS の Safari のタブで開くと、ホーム画面への追加を案内して、先へ進ませない", async ({ browser, baseURL }, testInfo) => {
   // iPhone の UA とタッチを名乗る。ホーム画面の Web アプリではない（navigator.standalone がない）

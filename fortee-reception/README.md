@@ -29,6 +29,7 @@ fortee 連携チェックインシステムである。fortee が発行するチ
 ## 必要なもの
 
 - Node.js 26.13.0（`.node-version`）と、同梱の npm
+- 画面のテストには OpenSSL（テスト用 HTTPS 証明書の生成に使う）
 - ローカルでログインして動かすには、Discord のアプリケーションと、受付スタッフのロールを持つギルド
 - カンファレンスの環境を作ってデプロイするには、Cloudflare のアカウントと API トークン
 
@@ -41,7 +42,7 @@ npm ci
 ```
 
 ```bash
-npx playwright install webkit chromium
+npx playwright install --with-deps webkit chromium
 ```
 
 ## ローカルでの起動

@@ -26,6 +26,7 @@
 | --- | --- | --- |
 | Node.js（LTS） | ビルド、テスト、管理 CLI、wrangler | 版は `package.json` の `engines` と `.node-version` で固定する。wrangler と Vite が求める版を満たすものとして、26.13.0 を選んだ（`engines` は `^26.13.0`）。管理 CLI は、この Node.js が TypeScript をそのまま実行する（Design Doc 3.2） |
 | npm | 依存関係の導入 | Node.js に同梱のもの |
+| OpenSSL | 画面のテスト用 HTTPS 証明書の生成 | `openssl req` の `-addext` オプションが使える版。Linux と macOS で `npm run test:e2e` を実行するときに必要 |
 | Git | ソースの取得、リリース名 | `deploy` がリリース名に `git describe` を使う（Design Doc 8.1） |
 | Cloudflare のアカウントと API トークン | 環境の作成、デプロイ、管理 CLI | トークンの権限はバックエンド 4 章のとおり、操作ごとに絞る。4 章の表にない操作では、D1 と KV の作成とマイグレーションに D1 と Workers KV Storage の Edit、デプロイと秘密の設定に Workers Scripts の Edit を付ける（ほかに要る権限は、環境を作るときに確かめる）。トークンには、作る管理者のメンバーのロールが持つ権限までしか付けられないので、管理者には、これらの権限を含むロールを与えておく。Workers Platform Admin で足りる（バックエンド 4 章）。`wrangler login` は使わない。`--scopes` で OAuth のスコープを選べるが、API トークンなら、D1 と KV の読み取りだけの権限と編集の権限を、操作ごとに作り分けられる（バックエンド 4 章）。`--scopes` で同じ粒度に絞れるかは確かめていない |
 | Discord のアプリケーションとギルド | ログイン | カンファレンスの環境とローカルの開発で、同じものを使う（Design Doc 3.6） |
@@ -39,7 +40,7 @@ npm ci
 ```
 
 ```bash
-npx playwright install webkit chromium
+npx playwright install --with-deps webkit chromium
 ```
 
 `npm install` ではなく `npm ci` を使い、`package-lock.json` の版をそのまま入れる。ライブラリの版を上げるときは、Design Doc 14 章とフロントエンド 8 章の表も直す。
@@ -126,6 +127,10 @@ npm run lint
 `npm test` は core、app、worker、cli の Vitest と、lint の規則が違反を検出することの検査（Design Doc 3.2）を、`npm run test:e2e` は Playwright の画面のテストを動かす。何を確かめるかは Design Doc 11 章にある。
 
 `npm run test:e2e` は、サーバとデータを自分で用意する（`test/e2e/setup/serve.ts`）。開発の `.wrangler/state` と `.work/` には触れず、`.wrangler/e2e/` と `.wrangler/e2e-sync/` を毎回空にして、合成の ZIP とテスト用の設定（`test/e2e/fixtures/e2e.toml`）を公開し、ビルドの出力を `wrangler dev` でポート 4173 と 4174 に配る。4.3 の公開は要らない。セッションの秘密はテスト用の値を渡し、`.dev.vars` の値は使わない。Discord には通信しない。どちらかのポートをほかのサーバが使っていると、起動できずに止まる。QR の文字列を判定に渡し、高速受付を切り替えるテスト用の入口（`window.__checkinTest`）は、このビルドと開発サーバ（`npm run dev`）にだけ入り、CLI の `deploy` のビルドには入らない。
+
+画面のテストのサーバは、Service Worker の検証用サーバも含めて `https://localhost.dev.yapcjapan.org:<ポート>` で配る。この名前は `127.0.0.1` に解決され、サーバも `127.0.0.1` にだけ bind する。テストを実行する環境で、この名前を解決できる必要がある。localhost 固有の Secure Context や Cookie の例外に頼らず、通常のドメイン名でオリジンの判定と、本番と同じ `__Host-session` の属性を確かめる。Linux の WebKit は HTTP の localhost に Secure Cookie を保存・送信しないので、HTTPS が必要である。
+
+自己署名証明書と鍵は OpenSSL で毎回 `.wrangler/e2e/tls/` に生成し、Playwright の `ignoreHTTPSErrors` でテスト中だけ許容する。Chromium の Service Worker のスクリプト取得にはこれだけでは足りないため、テスト専用のブラウザプロセスに `--ignore-certificate-errors` も渡す。OS の信頼ストアは変更しない。Node.js からサーバへの起動確認と、Service Worker の検証用サーバから Worker への通信は、この証明書を指定して検証する。CI も Linux（`ubuntu-latest`）で実行する。
 
 GitHub Actions（リポジトリの直下の `.github/workflows/ci.yml`）は、プルリクエストで、3 章の導入と、この 4 つのコマンドを実行する。秘密は使わない。`main` への push では、デプロイの workflow（`.github/workflows/deploy.yml`）が同じ検査を呼び、通った後にデプロイする（8 章）。
 

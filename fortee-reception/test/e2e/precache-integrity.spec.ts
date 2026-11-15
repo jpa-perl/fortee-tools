@@ -1,8 +1,10 @@
 import { readFile } from "node:fs/promises";
-import { createServer, type Server } from "node:http";
+import { createServer, type Server } from "node:https";
 import type { AddressInfo } from "node:net";
 import { extname, join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { E2E_HOST, e2eOrigin } from "./setup/data.ts";
+import { readTlsOptions } from "./setup/tls.ts";
 
 // 事前にキャッシュする中身の照合（Design Doc 6.11）。
 // 取得の途中で配信が別の版に切り替わったときに、Service Worker が有効にならないことを確かめる。
@@ -22,36 +24,32 @@ const CONTENT_TYPES: Record<string, string> = {
 /** sw.js を配った後の要求（事前のキャッシュ）への応答を書き換える */
 type Tamper = (path: string, body: Buffer) => Buffer;
 
-type Site = { origin: string; precacheServed: Promise<void>; close: () => Promise<void> };
+type Site = { origin: string; tamperedServed: Promise<void>; close: () => Promise<void> };
 
 async function serveClient(tamper: Tamper): Promise<Site> {
   let swServed = false;
-  const servedAfterSw = new Set<string>();
   let resolveServed: () => void = () => {};
-  const precacheServed = new Promise<void>((resolve) => {
+  const tamperedServed = new Promise<void>((resolve) => {
     resolveServed = resolve;
   });
 
-  const server: Server = createServer((req, res) => {
-    const path = new URL(req.url ?? "/", "http://localhost").pathname;
+  const server: Server = createServer(await readTlsOptions(), (req, res) => {
+    const path = new URL(req.url ?? "/", `https://${E2E_HOST}`).pathname;
     const file = path === "/" ? "index.html" : path.slice(1);
     readFile(join(CLIENT, file)).then(
       (original) => {
-        const body = swServed ? tamper(path, original) : original;
+        // Service Worker の cache: "reload" による取得だけを改変し、ページ自身の取得には触れない。
+        const precache = swServed && req.headers["cache-control"] === "no-cache";
+        const body = precache ? tamper(path, original) : original;
         res.writeHead(200, {
           "Content-Type": CONTENT_TYPES[extname(file)] ?? "application/octet-stream",
           "Cache-Control": "no-store",
         });
         res.end(body);
-        if (swServed) servedAfterSw.add(path);
         if (path === "/sw.js") swServed = true;
-        const paths = [...servedAfterSw];
-        const all =
-          servedAfterSw.has("/") &&
-          servedAfterSw.has("/manifest.webmanifest") &&
-          paths.some((p) => p.endsWith(".js")) &&
-          paths.some((p) => p.endsWith(".css"));
-        if (all) resolveServed();
+        // 整合性の検証が失敗すると、残りの取得は中断される（macOS の WebKit など）。
+        // 全ファイルではなく、改変した応答が実際に返ったことを待ってから、登録とキャッシュの消去を確かめる。
+        if (!body.equals(original)) resolveServed();
       },
       () => {
         res.writeHead(404);
@@ -62,8 +60,8 @@ async function serveClient(tamper: Tamper): Promise<Site> {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
   return {
-    origin: `http://127.0.0.1:${port}`,
-    precacheServed,
+    origin: e2eOrigin(port),
+    tamperedServed,
     close: () =>
       new Promise<void>((resolve) => {
         server.closeAllConnections();
@@ -106,7 +104,7 @@ test("取得の途中で別の版の HTML が返れば、Service Worker は有�
   });
   try {
     await page.goto(site.origin);
-    await site.precacheServed;
+    await site.tamperedServed;
     // インストールに失敗した Service Worker の登録は消え、キャッシュは作られない
     await expect.poll(() => page.evaluate(state)).toEqual({ registrations: 0, caches: [] });
   } finally {
@@ -121,7 +119,7 @@ test("取得した中身がこのビルドのものと違えば、Service Worker
   );
   try {
     await page.goto(site.origin);
-    await site.precacheServed;
+    await site.tamperedServed;
     await expect.poll(() => page.evaluate(state)).toEqual({ registrations: 0, caches: [] });
   } finally {
     await site.close();

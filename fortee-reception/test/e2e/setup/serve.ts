@@ -1,8 +1,10 @@
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
+import { get } from "node:https";
 import { join } from "node:path";
 import { PROJECT_ROOT } from "../../../src/cli/paths.ts";
-import { E2E_ENVIRONMENTS, E2E_SESSION_SECRET } from "./data.ts";
+import { E2E_ENVIRONMENTS, E2E_SESSION_SECRET, e2eOrigin } from "./data.ts";
 import { prepare } from "./prepare.ts";
+import { E2E_TLS_CERT, E2E_TLS_KEY, prepareTls, readTlsOptions } from "./tls.ts";
 
 // 画面のテスト（Playwright）のサーバ。playwright.config.ts の webServer が起動する。
 //
@@ -19,6 +21,8 @@ const bin = (name: string): string => join(PROJECT_ROOT, "node_modules", ".bin",
 const environments = Object.values(E2E_ENVIRONMENTS);
 
 for (const environment of environments) await prepare(environment);
+await prepareTls();
+const { cert } = await readTlsOptions();
 execFileSync(bin("vite"), ["build"], {
   cwd: PROJECT_ROOT,
   stdio: "inherit",
@@ -35,10 +39,14 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, stop);
 /** サーバが応えるまで待つ */
 async function waitFor(port: number): Promise<void> {
   for (let i = 0; i < 600; i++) {
-    const ok = await fetch(`http://localhost:${port}/`).then(
-      (response) => response.ok,
-      () => false,
-    );
+    const ok = await new Promise<boolean>((resolve) => {
+      const request = get(e2eOrigin(port), { ca: cert }, (response) => {
+        response.resume();
+        resolve(response.statusCode === 200);
+      });
+      request.on("error", () => resolve(false));
+      request.setTimeout(1000, () => request.destroy());
+    });
     if (ok) return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
@@ -58,6 +66,14 @@ for (const [i, environment] of environments.entries()) {
       environment.target.persistTo ?? "",
       "--port",
       String(environment.port),
+      "--ip",
+      "127.0.0.1",
+      "--local-protocol",
+      "https",
+      "--https-key-path",
+      E2E_TLS_KEY,
+      "--https-cert-path",
+      E2E_TLS_CERT,
       // 2 つのサーバが、同じ検査用のポートを取り合わないようにする
       "--inspector-port",
       String(9339 + i),

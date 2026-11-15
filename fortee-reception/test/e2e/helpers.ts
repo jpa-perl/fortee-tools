@@ -33,14 +33,10 @@ function sessionToken(operator: Operator): string {
   return `${payload}.${signature}`;
 }
 
-/**
- * セッションの Cookie を置く。Cookie は __Host- 接頭辞と Secure 付きで、http://localhost に置けるかは
- * ブラウザで違う。Chromium は URL での指定を拒むので、ドメインとパスで置く。WebKit は、その逆である
- */
+/** HTTPS のテスト用オリジンに、本番と同じ __Host- / Secure 属性のセッション Cookie を置く */
 export async function addSessionCookie(context: BrowserContext, baseURL: string, operator = OPERATOR): Promise<void> {
   const cookie = { name: "__Host-session", value: sessionToken(operator), httpOnly: true, secure: true, sameSite: "Lax" as const };
-  const chromium = context.browser()?.browserType().name() === "chromium";
-  await context.addCookies([chromium ? { ...cookie, domain: new URL(baseURL).hostname, path: "/" } : { ...cookie, url: baseURL }]);
+  await context.addCookies([{ ...cookie, url: new URL("/", baseURL).href }]);
 }
 
 export const scanButton = (page: Page) => page.getByRole("button", { name: "QR コード読み取り" });
