@@ -136,4 +136,5 @@ npm run admin -- <コマンド> --env <環境名>
 | [docs/design-doc.md](docs/design-doc.md) | 構成、層のあいだで共有する契約、各層の内部構成、版と互換性、テストの方針 |
 | [docs/dev-setup.md](docs/dev-setup.md) | 開発、運用の開始、デプロイ、削除のコマンドの手順 |
 | [docs/production-setup.md](docs/production-setup.md) | カンファレンスの環境（本番環境）を作る手順 |
+| [docs/user-guide/](docs/user-guide/README.md) | 受付スタッフ向けの受付アプリの使い方 |
 | [docs/research/](docs/research/) | fortee の仕様、バックエンドとフロントエンドの選定、端末の挙動の調査 |

@@ -10,7 +10,7 @@
     "outDir": ".tsbuild/test",
     "tsBuildInfoFile": ".tsbuild/test.tsbuildinfo"
   },
-  "include": ["test/core/**/*", "test/app/**/*", "test/cli/**/*", "test/tooling/**/*", "test/e2e/**/*"],
+  "include": ["test/core/**/*", "test/app/**/*", "test/cli/**/*", "test/tooling/**/*", "test/e2e/**/*", "test/guide/**/*"],
   "references": [
     { "path": "./tsconfig.core.json" },
     { "path": "./tsconfig.app.json" },
