@@ -5,8 +5,10 @@ import { selectReception } from "../../core/reception.ts";
 import { buildSearchIndex } from "../../core/search.ts";
 import { buildSnapshotIndex } from "../../core/snapshot.ts";
 import { pickSyncStatus, type Versions } from "../../core/sync.ts";
+import { dayKey } from "../../core/time.ts";
 import {
   config,
+  confirmedReception,
   type DeviceRecord,
   deviceId,
   judging,
@@ -62,6 +64,27 @@ export const deviceVersions = computed<Versions | null>(() => {
 export const autoReception = computed<Reception | null>(() => {
   const current = config.value;
   return current === null ? null : selectReception(current, now.value);
+});
+
+/**
+ * 設定のタイムゾーンでの、今日の日付（core の dayKey()）。配布物がなければ null。
+ *
+ * 現在時刻（now）は 1 秒ごとに変わるが、この値は日付が変わるときにしか変わらない。時刻の表示（views.ts の
+ * formatClock()）は、now ではなくこの値を読む。now を読むと、時刻を出している行（直近の記録、履歴の全行）が、
+ * 表示が変わらないのに 1 秒ごとに描き直される
+ */
+export const today = computed<number | null>(() => {
+  const current = config.value;
+  return current === null ? null : dayKey(now.value, current.conference.timezone);
+});
+
+/**
+ * 確定している受付の期間のうち、現在時刻を含むもの。期間外か、受付なしなら null（S02 の受付のカード）。
+ * 設定が持つ期間をそのまま返すので、期間の境界を跨ぐまで値が変わらず、読む側は 1 秒ごとには描き直されない
+ */
+export const confirmedPeriod = computed<{ start: number; end: number } | null>(() => {
+  const time = now.value;
+  return confirmedReception.value.reception?.periods.find((period) => period.start <= time && time < period.end) ?? null;
 });
 
 /** 手動の上書きが、その時刻に有効なら、指す受付を返す。期限を過ぎたか、受付が設定になければ null */

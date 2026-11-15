@@ -78,16 +78,29 @@ export function offsetMsAt(epochMs: number, timezone: string): number {
 const pad2 = (value: number) => String(value).padStart(2, "0");
 
 /**
- * 画面に出す時刻（画面設計書 2.9）。設定のタイムゾーンで、当日（now と同じ日付）は「08:30」、
- * それ以外の日は「11/28 08:30」にする。時と分は 2 桁にそろえ、秒は出さない。月と日は桁をそろえない。
- * 年は出さない。年をまたぐ催しでの利用は想定せず、書式を増やさない
+ * 時刻の、タイムゾーンでの日付を表す数（年 × 10000 + 月 × 100 + 日）。同じ日付なら同じ値になる。
+ * 「当日か」を、秒ごとに変わる現在時刻そのものではなく、日付が変わるときにだけ変わる値で比べるためのもの
  */
-export function formatTime(epochMs: number, now: number, timezone: string): string {
+export function dayKey(epochMs: number, timezone: string): number {
+  return dayKeyOf(zonedParts(epochMs, timezone));
+}
+
+const dayKeyOf = (p: { year: number; month: number; day: number }): number => p.year * 10000 + p.month * 100 + p.day;
+
+/**
+ * 画面に出す時刻（画面設計書 2.9）。設定のタイムゾーンで、当日（today と同じ日付）は「08:30」、
+ * それ以外の日は「11/28 08:30」にする。時と分は 2 桁にそろえ、秒は出さない。月と日は桁をそろえない。
+ * 年は出さない。年をまたぐ催しでの利用は想定せず、書式を増やさない。today は dayKey() の値
+ */
+export function formatTimeOnDay(epochMs: number, today: number, timezone: string): string {
   const at = zonedParts(epochMs, timezone);
-  const today = zonedParts(now, timezone);
   const time = `${pad2(at.hour)}:${pad2(at.minute)}`;
-  const sameDay = at.year === today.year && at.month === today.month && at.day === today.day;
-  return sameDay ? time : `${at.month}/${at.day} ${time}`;
+  return dayKeyOf(at) === today ? time : `${at.month}/${at.day} ${time}`;
+}
+
+/** 画面に出す時刻（formatTimeOnDay()）。当日を、現在時刻 now の日付で決める */
+export function formatTime(epochMs: number, now: number, timezone: string): string {
+  return formatTimeOnDay(epochMs, dayKey(now, timezone), timezone);
 }
 
 /**

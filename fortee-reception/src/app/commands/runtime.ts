@@ -50,6 +50,13 @@ export function fatal(error: unknown): void {
   judging.value = false;
   overlay.value = null;
   screen.value = { id: "S99", error: message };
+  // 読み取り中に移ったときに、カメラを止める。画面が映像の要素を外すだけでは、映像の取り込みと、
+  // 150 ms ごとの読み取りの処理が、読み込み直すまで残る。ここで失敗しても、残りの後始末は行う
+  try {
+    rt.ports.camera.stop();
+  } catch (cause) {
+    console.error(cause);
+  }
   rt.ports.wakeLock.set(false);
   rt.ports.historyGuard.setArmed(false);
   rt.settle();
