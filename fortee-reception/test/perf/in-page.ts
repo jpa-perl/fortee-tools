@@ -205,10 +205,19 @@ export async function pipelineBench(input: { iterations: number }): Promise<Reco
  * デコーダ（jsQR）だけの時間と成功率。合成の画像を、条件（QR なし、大きい QR、小さい QR、暗い、反射、ぼけ、
  * 手ぶれ）ごとに、位置と傾きと雑音を変えて iterations 枚ずつ作り、長辺を sides の各値に縮めて渡す
  */
-export function decoderBench(input: { matrix: QrMatrix; sides: number[]; iterations: number }): Record<string, unknown> {
+export async function decoderBench(input: { matrix: QrMatrix; sides: number[]; iterations: number }): Promise<Record<string, unknown>> {
   const jsQR = (window as unknown as { jsQR: JsQr }).jsQR;
   const BASE_W = 1280;
   const BASE_H = 920;
+  // ブラウザの検出器（BarcodeDetector）。あれば、同じ画像で、成功率と、結果が届くまでの時間を比べる。
+  // 縮める前の画像（アプリは、映像のコマをそのまま渡す）と、長辺 640 に縮めた画像の両方を渡す
+  type Native = { detect(source: HTMLCanvasElement | ImageData): Promise<{ rawValue: string }[]> };
+  const NativeClass = (globalThis as { BarcodeDetector?: { new (options: { formats: string[] }): Native; getSupportedFormats(): Promise<string[]> } })
+    .BarcodeDetector;
+  const native =
+    NativeClass !== undefined && (await NativeClass.getSupportedFormats()).includes("qr_code")
+      ? new NativeClass({ formats: ["qr_code"] })
+      : null;
   // 乱数は、種から決まる値にする。変更の前後と、ブラウザのあいだで、同じ画像になる
   let seed = 12345;
   const random = (): number => {
@@ -309,12 +318,20 @@ export function decoderBench(input: { matrix: QrMatrix; sides: number[]; iterati
   for (const variant of variants) {
     const times: Record<number, number[]> = {};
     const hits: Record<number, number> = {};
+    const nativeTimes: Record<string, number[]> = { full: [], side640: [] };
+    const nativeHits: Record<string, number> = { full: 0, side640: 0 };
     for (const side of input.sides) {
       times[side] = [];
       hits[side] = 0;
     }
     for (let i = 0; i < input.iterations; i++) {
       const source = draw(variant);
+      if (native !== null) {
+        const start = performance.now();
+        const found = await native.detect(source);
+        nativeTimes.full?.push(performance.now() - start);
+        if (found.length > 0) nativeHits.full = (nativeHits.full ?? 0) + 1;
+      }
       for (const side of input.sides) {
         const [, context] = canvasOf(side, Math.round((side * BASE_H) / BASE_W));
         context.drawImage(source, 0, 0, context.canvas.width, context.canvas.height);
@@ -331,21 +348,31 @@ export function decoderBench(input: { matrix: QrMatrix; sides: number[]; iterati
         const found = jsQR(image.data, image.width, image.height, { inversionAttempts: "dontInvert" });
         times[side]?.push(performance.now() - start);
         if (found !== null) hits[side] = (hits[side] ?? 0) + 1;
+        if (native !== null && side === 640) {
+          const nativeStart = performance.now();
+          const nativeFound = await native.detect(image);
+          nativeTimes.side640?.push(performance.now() - nativeStart);
+          if (nativeFound.length > 0) nativeHits.side640 = (nativeHits.side640 ?? 0) + 1;
+        }
       }
     }
-    output[variant.name] = Object.fromEntries(
-      input.sides.map((side) => {
-        const sorted = [...(times[side] ?? [])].sort((a, b) => a - b);
-        return [
-          side,
-          {
-            medianMs: round(sorted[Math.floor(sorted.length / 2)] ?? 0),
-            p95Ms: round(sorted[Math.floor(sorted.length * 0.95)] ?? 0),
-            success: `${hits[side] ?? 0}/${input.iterations}`,
-          },
-        ];
-      }),
-    );
+    const summarize = (values: number[], count: number) => {
+      const sorted = [...values].sort((a, b) => a - b);
+      return {
+        medianMs: round(sorted[Math.floor(sorted.length / 2)] ?? 0),
+        p95Ms: round(sorted[Math.floor(sorted.length * 0.95)] ?? 0),
+        success: `${count}/${input.iterations}`,
+      };
+    };
+    output[variant.name] = {
+      ...Object.fromEntries(input.sides.map((side) => [side, summarize(times[side] ?? [], hits[side] ?? 0)])),
+      ...(native === null
+        ? {}
+        : {
+            nativeFull: summarize(nativeTimes.full ?? [], nativeHits.full ?? 0),
+            native640: summarize(nativeTimes.side640 ?? [], nativeHits.side640 ?? 0),
+          }),
+    };
   }
   return output;
 }

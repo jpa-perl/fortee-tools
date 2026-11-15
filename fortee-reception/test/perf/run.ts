@@ -430,7 +430,9 @@ async function decoder(): Promise<unknown> {
   for (const [name, type] of [["chromium", chromium], ["webkit", webkit]] as const) {
     const browser = await type.launch();
     const page = await browser.newPage();
-    await page.goto("about:blank");
+    // ブラウザの検出器（BarcodeDetector）は、安全なコンテキストでだけ使える。通信はせずに、https のページとして開く
+    await page.route("https://perf.invalid/", (route) => route.fulfill({ contentType: "text/html", body: "<!doctype html><title>perf</title>" }));
+    await page.goto("https://perf.invalid/");
     await page.addScriptTag({ content: script });
     result[name] = await page.evaluate(decoderBench, { matrix, sides: DECODER_SIDES, iterations: 30 });
     await browser.close();

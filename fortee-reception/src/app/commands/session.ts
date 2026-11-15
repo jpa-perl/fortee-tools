@@ -40,7 +40,7 @@ import {
 } from "./app-shell.ts";
 import { handleBack } from "./navigation.ts";
 import { initReception, refreshReception } from "./reception.ts";
-import { closeDatabase, enqueue, fatal, go, openedDatabase, rt, selectStore, setOverlay } from "./runtime.ts";
+import { closeDatabase, enqueue, fatal, go, openedDatabase, rt, selectStore, setOverlay, stopCameraAndRest } from "./runtime.ts";
 import { onHidden, scanTick } from "./scan.ts";
 import { abortSync, deferNextSync, distributionQueued, resetSync, runSync, syncTick } from "./sync.ts";
 
@@ -288,7 +288,7 @@ export function startRelogin(): void {
   const current = screen.value;
   // ヘッダを置く画面のうち、受付操作の途中（画面設計書 2.7）でないもの。S05 と S07 でも効く（画面設計書 2.3、2.8）
   if (current.id !== "home" && current.id !== "S09" && current.id !== "S05" && current.id !== "S07") return;
-  rt.ports.camera.stop();
+  stopCameraAndRest();
   go({ id: "S01", phase: "idle", canGoBack: true });
 }
 
@@ -341,7 +341,7 @@ export async function logout(): Promise<void> {
   rt.releaseLock = null;
   void rt.ports.network.logout();
 
-  rt.ports.camera.stop();
+  stopCameraAndRest();
   resetSync();
   operator.value = null;
   cursor.value = null;

@@ -16,6 +16,12 @@ import { decodeSize, visibleSourceRect } from "./scan-region.ts";
 /** デコードの間隔（Design Doc 6.5） */
 const DECODE_INTERVAL_MS = 150;
 
+/**
+ * 検出器の結果を待つ時間の上限。超えたのを、150 ms ごとの処理で 2 回続けて見たら、検出器が止まったものと見なして、
+ * キャンバスと QrDecoder に切り替える
+ */
+const DETECT_TIMEOUT_MS = 2000;
+
 /** jsQR による実装。白地に黒の QR だけを探す */
 export const jsQrDecoder: QrDecoder = (image) => {
   try {
@@ -42,11 +48,17 @@ export function createCamera(
   /** start() の世代。古い start() の結果を捨てる */
   let session = 0;
   let canvas: HTMLCanvasElement | null = null;
-  /** 検出器。まだ確かめていなければ undefined、使えなければ null */
-  let detector: Promise<FrameDetector | null> | undefined;
+  /** 検出器が使えるかを、確かめ始めたか */
+  let probed = false;
+  /** 検出器。使えると分かるまでと、使えないとき、失敗した後は null（キャンバスと QrDecoder で読み取る） */
   let frameDetector: FrameDetector | null = null;
   /** 検出器が、前のコマを調べている最中か。終わるまで、次のコマを渡さない（溜めない） */
   let detecting = false;
+  /** 検出器にコマを渡した時刻と、その呼び出しの番号。番号が変わっていたら、その結果は使わない */
+  let detectStartedAt = 0;
+  let detectId = 0;
+  /** 検出器の結果が、待つ時間の上限を超えているのを、前の回に見たか */
+  let detectOverdue = false;
   /** デコードを止めるたびに増える。止めた後に届いた検出の結果を捨てる */
   let decodeEpoch = 0;
 
@@ -65,6 +77,18 @@ export function createCamera(
       { width: video.clientWidth, height: video.clientHeight },
     );
     if (source === null) return;
+    if (frameDetector !== null && detecting && Date.now() - detectStartedAt >= DETECT_TIMEOUT_MS) {
+      if (!detectOverdue) {
+        // 上限を超えたのを、初めて見た。メインスレッドがふさがっていた（この処理も遅れた）だけで、結果は
+        // もう届いていて、受け取る順番を待っているのかもしれない。次の回まで待って、それでも届かなければ見切る
+        detectOverdue = true;
+        return;
+      }
+      // 結果が届かない。待ち続けると、読み取りが止まったままになる。遅れて届いた結果は使わない
+      detectId++;
+      detecting = false;
+      frameDetector = null;
+    }
     if (frameDetector !== null) {
       if (!detecting) void detectFrame(frameDetector, video, source);
       return;
@@ -85,19 +109,23 @@ export function createCamera(
   /** 映像のコマを検出器に渡す。結果は後から届くので、その間にデコードを止めていたら捨てる */
   async function detectFrame(detect: FrameDetector, element: HTMLVideoElement, source: Parameters<FrameDetector>[1]) {
     const epoch = decodeEpoch;
+    const id = ++detectId;
     detecting = true;
+    detectStartedAt = Date.now();
+    detectOverdue = false;
     // NFR-1 の計測の開始点。このコマの結果が届くまで、次のコマは渡さないので、印はこのコマのものである
     mark("checkin:frame");
     let text: string | null = null;
     try {
       text = await detect(element, source);
     } catch {
-      // 検出器が失敗した（検出器の停止、対応しない状態の映像）。以後は、キャンバスと QrDecoder で読み取る
-      frameDetector = null;
-      detector = Promise.resolve(null);
-    } finally {
-      detecting = false;
+      // 検出器が失敗した（検出器の停止、対応しない状態の映像）。以後は、キャンバスと QrDecoder で読み取る。
+      // デコードを止めた後に届いた失敗は、止めたこと（映像を外した）が原因かもしれないので、数えない
+      if (id === detectId && epoch === decodeEpoch) frameDetector = null;
     }
+    // 待つ上限を超えて、見切った呼び出し。次の読み取りは、もう始まっている
+    if (id !== detectId) return;
+    detecting = false;
     if (epoch !== decodeEpoch || onText === null) return;
     if (text !== null) onText(text);
   }
@@ -125,12 +153,20 @@ export function createCamera(
     async start(listener) {
       stop();
       const mine = ++session;
-      // 検出器が使えるかは、カメラの許可を待つ間に確かめる
-      detector ??= detectorFactory().catch(() => null);
+      // 検出器が使えるかを確かめる。結果は待たない。分かるまでは、キャンバスと QrDecoder で読み取る。
+      // 確かめる処理が終わらなくても、読み取りは始まる
+      if (!probed) {
+        probed = true;
+        void detectorFactory().then(
+          (found) => {
+            frameDetector = found;
+          },
+          () => {},
+        );
+      }
       let acquired: MediaStream;
       try {
         acquired = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
-        frameDetector = await detector;
       } catch {
         // 拒否は NotAllowedError で届く（iOS の Permissions API は拒否を prompt と返す）。
         // カメラがない、ほかのアプリが使っているなど、ほかの失敗も、カメラを使えないものとして同じに扱う

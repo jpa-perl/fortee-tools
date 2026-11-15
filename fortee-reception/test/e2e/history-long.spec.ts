@@ -33,6 +33,9 @@ test("履歴は、先頭の 100 行を描き、終わりまでスクロールす
 });
 
 test("キーボードで行を順にたどっても、最後の行まで着ける", async ({ page }) => {
+  // 終わりの近くの行にフォーカスが移ると、その行が見える位置までスクロールされて、続きが足される
+  await rows(page).nth(85).getByRole("button").focus();
+  await expect.poll(() => rows(page).count()).toBeGreaterThan(100);
   await rows(page).nth(95).getByRole("button").focus();
   for (let i = 0; i < 12; i++) await page.keyboard.press("Tab");
   // 100 行目を越えて、続きの行にフォーカスが移っている
