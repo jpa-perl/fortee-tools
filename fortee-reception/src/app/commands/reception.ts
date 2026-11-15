@@ -12,7 +12,7 @@ import {
   screen,
 } from "../state/model.ts";
 import type { Store } from "../storage/store.ts";
-import { enqueue, go, rt, setOverlay } from "./runtime.ts";
+import { enqueue, go, rt, setOverlay, stopCameraAndRest } from "./runtime.ts";
 
 // 受付の確定、手動の切り替えとその解除（Design Doc 6.2、FR-6〜8）と、画面の下の知らせ。
 
@@ -56,7 +56,7 @@ export function recomputeReception(): NoticeLine | null {
   confirmedReception.value = next;
   if (previous.reception?.id === next.reception?.id) return null;
   if (next.reception === null && screen.value.id === "home" && screen.value.mode.kind === "scanning") {
-    rt.ports.camera.stop();
+    stopCameraAndRest();
     go({ id: "home", mode: { kind: "idle" } });
   }
   return { kind: "receptionChanged", name: next.reception?.name ?? null };

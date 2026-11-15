@@ -210,8 +210,17 @@ export type Instance = Modules & {
     blockedFlag: boolean;
     visible: boolean;
     sounds: FeedbackKind[];
+    /** 音を鳴らせる状態にした回数と、休ませた回数 */
+    unlocks: number;
+    /** 音を鳴らす予定があると伝えたまま（unlock() の後、rest() がまだ）か */
+    audioWanted: boolean;
+    /** 音の出力への呼び出しの順（"unlock"、"play"、"rest"） */
+    audioCalls: ("unlock" | "play" | "rest")[];
+    rests: number;
     cameraStarts: number;
     cameraStops: number;
+    /** カメラを止める処理を、失敗させる */
+    cameraStopFails: boolean;
     cameraResult: "streaming" | "denied";
     armed: boolean;
     wakeLock: boolean;
@@ -263,8 +272,13 @@ export async function launch(world: World, options: LaunchOptions = {}): Promise
     blockedFlag: options.blockedFlag ?? false,
     visible: true,
     sounds: [],
+    unlocks: 0,
+    audioWanted: false,
+    audioCalls: [],
+    rests: 0,
     cameraStarts: 0,
     cameraStops: 0,
+    cameraStopFails: false,
     cameraResult: "streaming",
     armed: false,
     wakeLock: false,
@@ -366,9 +380,19 @@ export async function launch(world: World, options: LaunchOptions = {}): Promise
       },
     },
     feedback: {
-      unlock: () => {},
+      unlock: () => {
+        fake.unlocks++;
+        fake.audioWanted = true;
+        fake.audioCalls.push("unlock");
+      },
       play: (kind) => {
         fake.sounds.push(kind);
+        fake.audioCalls.push("play");
+      },
+      rest: () => {
+        fake.rests++;
+        fake.audioWanted = false;
+        fake.audioCalls.push("rest");
       },
       vibrate: () => {},
       canVibrate: () => true,
@@ -382,6 +406,7 @@ export async function launch(world: World, options: LaunchOptions = {}): Promise
       pauseDecoding: () => {},
       stop: () => {
         fake.cameraStops++;
+        if (fake.cameraStopFails) throw new Error("カメラを止められない");
       },
     },
     wakeLock: {

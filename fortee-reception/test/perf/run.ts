@@ -205,8 +205,21 @@ const scenarios: Record<string, (browser: Browser, qrBrowser: Browser) => Promis
     for (const value of ["p", "pe", "per", "perf-user-12", "perf-user-123", ""]) keystrokesX4.push(await interaction(page, typeInto(value)));
     const backMs = await interaction(page, clickByText("戻る"));
     const openMsX4 = await interaction(page, clickByText("履歴をすべて見る"));
+    // 一覧は、スクロールに合わせて続きを描く。終わりまでスクロールして、全件が出ることと、かかる時間を確かめる
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+    const rowsAtOpen = await page.locator("main li").count();
+    const scrollStarted = Date.now();
+    let rows = rowsAtOpen;
+    for (let i = 0; i < 400; i++) {
+      await page.evaluate(() => document.querySelector("main")?.scrollTo(0, 1e9));
+      await page.waitForTimeout(30);
+      const count = await page.locator("main li").count();
+      if (count === rows && i > 2) break;
+      rows = count;
+    }
+    const scrollAllMs = Date.now() - scrollStarted;
     await context.close();
-    return { openMs, openBreakdown: open_, openMsX4, backMsX4: backMs, keystrokes, keystrokesX4, idle };
+    return { openMs, openBreakdown: open_, openMsX4, backMsX4: backMs, keystrokes, keystrokesX4, idle, rowsAtOpen, rowsAtEnd: rows, scrollAllMs };
   },
 
   /** 検索（S05）の入力 */

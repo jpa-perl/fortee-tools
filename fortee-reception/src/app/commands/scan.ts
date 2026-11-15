@@ -91,6 +91,11 @@ export function attachCameraVideo(video: HTMLVideoElement | null): void {
   rt.ports.camera.attach(video);
 }
 
+/**
+ * カメラを止める。音の出力は、ここでは休ませない。読み取りを受理した後は、判定と書き込みの後に結果の音を
+ * 鳴らすので、その後で休ませる（restUnlessScanning()）。先に休ませると、書き込みに時間がかかったときに、
+ * 鳴らす前に音の出力が休む
+ */
 function stopCamera(): void {
   scanSession++;
   rt.ports.camera.stop();
@@ -98,10 +103,21 @@ function stopCamera(): void {
   scanBanner.value = false;
 }
 
+/**
+ * 音を鳴らす予定がなくなっていれば、音の出力を休ませる。音を鳴らせる状態にした（unlock()）操作が、終わりに呼ぶ。
+ * 読み取り中は、結果の音を鳴らす予定があるので、休ませない。呼び忘れると、音の出力が動いたまま残る
+ */
+function restUnlessScanning(): void {
+  if (!isScanning()) rt.ports.feedback.rest();
+}
+
 /** 読み取り中を終えて、カメラを止める。ほかの画面へ移る操作が呼ぶ。読み取りを受理した後は、止めない */
 export function leaveScan(): boolean {
   if (judging.value) return false;
-  if (isScanning()) stopCamera();
+  if (isScanning()) {
+    stopCamera();
+    rt.ports.feedback.rest();
+  }
   return true;
 }
 
@@ -248,7 +264,11 @@ export function handleDecoded(text: string): void {
         await judgeAndRecord(store, input, reception, judgement);
       }
     }
-  }).finally(() => setJudging(false));
+  }).finally(() => {
+    setJudging(false);
+    // 結果の音は、鳴らし終えている（鳴り終わるまでの時間は、音の出力の側が待つ）
+    restUnlessScanning();
+  });
 }
 
 // ───────── 通常受付の確認（S03-D1） ─────────
@@ -280,6 +300,7 @@ export async function confirmQrCheckin(): Promise<void> {
     });
   } finally {
     busy.value = false;
+    restUnlessScanning();
   }
 }
 
@@ -299,6 +320,7 @@ export function cancelQrCheckin(): void {
   // 受付操作の途中が終わる。保留していた受付の切り替えで受付なしになったら、この中で停止中に戻る（FR-7）
   go({ id: "home", mode: { kind: "scanning", camera: "requesting" } });
   if (isScanning()) void startCamera();
+  else restUnlessScanning();
 }
 
 /**
@@ -321,6 +343,8 @@ export function nextFromResult(): void {
   go({ id: "home", mode: { kind: "idle" } });
   if (cameraDenied) go({ id: "S05", query: "" });
   else startScan();
+  // 読み取り中に戻らなかった（カメラの使用が拒否されている、受付なしになっていた）。鳴らす予定はない
+  restUnlessScanning();
 }
 
 // ───────── S04-M1、S04-M2 ─────────
@@ -363,6 +387,7 @@ export async function confirmSuggestedSwitch(): Promise<void> {
     });
   } finally {
     busy.value = false;
+    restUnlessScanning();
   }
 }
 
@@ -398,5 +423,6 @@ export async function confirmSearchCheckin(): Promise<void> {
     });
   } finally {
     busy.value = false;
+    restUnlessScanning();
   }
 }

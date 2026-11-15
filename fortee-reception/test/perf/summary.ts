@@ -44,6 +44,8 @@ const rows: [string, string, string[]][] = [
   ["履歴を開く（CPU 4 倍遅）ms", "history", ["openMsX4"]],
   ["履歴の絞り込みの入力 ms", "history", ["keystrokes"]],
   ["履歴の絞り込みの入力（CPU 4 倍遅）ms", "history", ["keystrokesX4"]],
+  ["履歴: 開いたときの行の数", "history", ["rowsAtOpen"]],
+  ["履歴: 終わりまでスクロールした後の行の数", "history", ["rowsAtEnd"]],
   ["検索の入力 ms", "search", ["keystrokes"]],
   ["検索の入力（CPU 4 倍遅）ms", "search", ["keystrokesX4"]],
   ["読み取り中（QR なし）: 処理時間 ms / 窓", "scanNoQr", ["TaskDuration"]],

@@ -39,9 +39,18 @@ export type Locks = {
 export type FeedbackKind = "success" | "caution" | "reject";
 
 export type Feedback = {
-  /** 音を鳴らせる状態にする。タップの処理の中で呼ぶ（端末の挙動 11.3） */
+  /**
+   * 音を鳴らせる状態にする。タップの処理の中で呼ぶ（端末の挙動 11.3）。rest() を呼ぶまで、音の出力は休まない。
+   * 呼んだ操作は、音を鳴らす予定がなくなったら（結果を出した、読み取り中を終えた、何も鳴らさずに終わった）、
+   * 必ず rest() を呼ぶ
+   */
   unlock(): void;
   play(kind: FeedbackKind): void;
+  /**
+   * 音を鳴らす予定がなくなった（結果を出した、読み取り中を終えた）。鳴っている音が終わるのを待ってから、音の出力を休ませる。
+   * 次の unlock() で、鳴らせる状態に戻る
+   */
+  rest(): void;
   vibrate(kind: FeedbackKind): void;
   canVibrate(): boolean;
 };
