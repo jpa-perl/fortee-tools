@@ -17,7 +17,7 @@ import { DECODER_SIDES, decoderBench, pipelineBench, seedDatabase } from "./in-p
 // 画面のテストと同じサーバ（test/e2e/setup/serve.ts。本番と同じ最適化のビルドに、テスト用の入口だけを足したもの）を
 // 起動し、合成のデータ（PRD NFR-1 の規模: チケット 1,500 枚、記録 3,000 件。--scale で倍率）を端末の記憶域に
 // 置いてから、状態ごとに、決まった時間のメインスレッドの処理時間を CDP（Performance.getMetrics）で測る。
-// 結果は test-results/perf/<ラベル>.json に書く。CI と `npm run test:e2e` からは走らない。
+// 結果は .wrangler/perf/<ラベル>.json に書く。CI と `npm run test:e2e` からは走らない。
 //
 // 測れるのは、デスクトップの Chromium のメインスレッドの処理時間と、描画の回数、DOM の要素数、ヒープである。
 // 実機のカメラ、GPU、画面、通信の電力は測れない。偽のカメラの映像の取り出し（drawImage）の時間も、実機の値ではない。
@@ -38,7 +38,7 @@ const RECORDS = 3000 * SCALE;
 
 const environment = E2E_ENVIRONMENTS.main;
 const baseURL = e2eOrigin(environment.port);
-const outDir = join(PROJECT_ROOT, "test-results", "perf");
+const outDir = join(PROJECT_ROOT, ".wrangler", "perf");
 mkdirSync(outDir, { recursive: true });
 
 /** 合成のチケットのトークン。in-page.ts の seedDatabase() と同じ規則 */
@@ -145,7 +145,8 @@ const clickByText = (text: string): string =>
 const typeInto = (value: string): string =>
   `const input = document.querySelector("input"); input.value = ${JSON.stringify(value)}; input.dispatchEvent(new Event("input", { bubbles: true }));`;
 
-type Session = { context: BrowserContext; page: Page; cdp: CDPSession };
+/** fresh は、まだ済みにしていない合成のチケットのトークン（i は 0 から 99） */
+type Session = { context: BrowserContext; page: Page; cdp: CDPSession; fresh: (i: number) => string };
 
 /** ログインして、合成のデータを置き、オフラインで停止中（S02）に着く */
 async function open(browser: Browser): Promise<Session> {
@@ -163,12 +164,12 @@ async function open(browser: Browser): Promise<Session> {
   await scanButton(page).waitFor();
   await page.evaluate(() => window.__checkinTest?.setFastCheckin(true));
   await goOffline(page);
-  await page.evaluate(seedDatabase, { tickets: TICKETS, records: RECORDS, now: Date.now() });
+  const synthetic = await page.evaluate(seedDatabase, { tickets: TICKETS, records: RECORDS, now: Date.now() });
   await page.reload();
   await scanButton(page).waitFor();
   const cdp = await context.newCDPSession(page);
   await cdp.send("Performance.enable");
-  return { context, page, cdp };
+  return { context, page, cdp, fresh: (i) => perfToken(synthetic - 1 - i) };
 }
 
 const resultMark = (page: Page): Promise<number> =>
@@ -275,9 +276,26 @@ const scenarios: Record<string, (browser: Browser, qrBrowser: Browser) => Promis
     return { delay: taps.map((tap) => tap.delay), duration: taps.map((tap) => tap.duration) };
   },
 
+  /** 結果（S04）を表示したまま、次の操作を待っている。続けて、参考情報のシート（S04-M1）を開いたまま待つ */
+  async result(browser) {
+    const { context, page, cdp, fresh } = await open(browser);
+    await scanButton(page).click();
+    await page.waitForFunction(() => (document.querySelector("video")?.videoWidth ?? 0) > 0);
+    await page.evaluate((text) => window.__checkinTest?.scan(text), `fortee:${fresh(0)}`);
+    await page.getByRole("button", { name: "次へ", exact: true }).waitFor();
+    await page.waitForTimeout(2000);
+    const shown = await measureWindow(page, cdp, WINDOW_S);
+    await page.getByRole("button", { name: "参考情報" }).click();
+    await page.waitForTimeout(2000);
+    const sheet = await measureWindow(page, cdp, WINDOW_S);
+    await context.close();
+    return { shown, sheet };
+  },
+
   /** 一定のペースで受付を繰り返す。チケットは毎回別（記録の保存を通る）。読み取りは、テスト用の入口から渡す */
   async checkinLoop(browser) {
-    const { context, page, cdp } = await open(browser);
+    const { context, page, cdp, fresh } = await open(browser);
+    await cdp.send("HeapProfiler.collectGarbage");
     const before = await metricsOf(cdp);
     const started = Date.now();
     const hookToResult: number[] = [];
@@ -291,15 +309,24 @@ const scenarios: Record<string, (browser: Browser, qrBrowser: Browser) => Promis
         const now = performance.now();
         window.__checkinTest?.scan(text);
         return now;
-      }, `fortee:${perfToken(TICKETS - 1 - i)}`);
+      }, `fortee:${fresh(i)}`);
       hookToResult.push(Math.round(((await waitResult(page, previous)) - at) * 10) / 10);
       // 結果を出したまま、次の操作を待つ時間
       await page.waitForTimeout(1000);
       await page.getByRole("button", { name: "次へ", exact: true }).click();
     }
+    // 最後の結果から停止中に戻してから、ヒープと DOM の要素数を比べる
+    await page.getByRole("button", { name: "終了" }).click();
+    await scanButton(page).waitFor();
+    await cdp.send("HeapProfiler.collectGarbage");
     const after = await metricsOf(cdp);
     await context.close();
+    const mb = (metrics: Metrics): number => Math.round(((metrics.JSHeapUsedSize ?? 0) / 1024 / 1024) * 100) / 100;
     return {
+      heapBeforeMB: mb(before),
+      heapAfterMB: mb(after),
+      nodesBefore: before.Nodes ?? 0,
+      nodesAfter: after.Nodes ?? 0,
       wallSeconds: Math.round((Date.now() - started) / 100) / 10,
       TaskDuration: Math.round(((after.TaskDuration ?? 0) - (before.TaskDuration ?? 0)) * 1000),
       ScriptDuration: Math.round(((after.ScriptDuration ?? 0) - (before.ScriptDuration ?? 0)) * 1000),

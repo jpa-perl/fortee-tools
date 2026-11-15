@@ -10,9 +10,10 @@ export const DECODER_SIDES = [640, 480, 320];
 
 /**
  * 端末の記憶域に、合成のチケットと記録を置く。公開されたスナップショットの 1 つ（本編）に参加者を足し、
- * 記録を、半分はこの端末、半分は別の端末のものとして置く。どれも送信済みにする。呼んだ後に読み込み直す
+ * 記録を、半分はこの端末、半分は別の端末のものとして置く。どれも送信済みにする。呼んだ後に読み込み直す。
+ * 足した参加者の数を返す。番号の大きいほうの 100 枚は、済みにしていない
  */
-export async function seedDatabase(input: { tickets: number; records: number; now: number }): Promise<void> {
+export async function seedDatabase(input: { tickets: number; records: number; now: number }): Promise<number> {
   const request = <T>(r: IDBRequest<T>): Promise<T> =>
     new Promise((resolve, reject) => {
       r.onsuccess = () => resolve(r.result);
@@ -88,6 +89,7 @@ export async function seedDatabase(input: { tickets: number; records: number; no
     tx.onabort = () => reject(tx.error);
   });
   db.close();
+  return synthetic;
 }
 
 type JsQr = (data: Uint8ClampedArray, width: number, height: number, options: { inversionAttempts: string }) => { data: string } | null;

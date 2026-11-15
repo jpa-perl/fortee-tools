@@ -70,7 +70,7 @@ describe("時計の更新と描き直し", () => {
     expect(card.value().reception?.id).not.toBe("main");
   });
 
-  it("手動で切り替えた受付の期間外では、期間を出さず、期間に入ったときに出す", async () => {
+  it("手動で切り替えた受付の期間外では、期間を出さず、秒が進んでも描き直さない", async () => {
     const { world } = publishedWorld(IN_MAIN);
     const app = await ready(world);
     app.commands.openReceptionSheet();

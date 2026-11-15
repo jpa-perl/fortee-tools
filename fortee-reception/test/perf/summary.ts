@@ -11,7 +11,7 @@ import { PROJECT_ROOT } from "../../src/cli/paths.ts";
 type Json = Record<string, unknown>;
 
 const labels = process.argv.slice(2);
-const files = labels.map((label) => JSON.parse(readFileSync(join(PROJECT_ROOT, "test-results", "perf", `${label}.json`), "utf8")) as Json);
+const files = labels.map((label) => JSON.parse(readFileSync(join(PROJECT_ROOT, ".wrangler", "perf", `${label}.json`), "utf8")) as Json);
 
 function spread(values: number[]): string {
   if (values.length === 0) return "-";
@@ -49,7 +49,13 @@ const rows: [string, string, string[]][] = [
   ["読み取り中（QR なし）: 処理時間 ms / 窓", "scanNoQr", ["TaskDuration"]],
   ["読み取り中に「終了」: 処理開始までの待ち（CPU 4 倍遅）ms", "scanTap", ["delay"]],
   ["読み取り中に「終了」: 次の描画まで（CPU 4 倍遅）ms", "scanTap", ["duration"]],
+  ["結果を表示したまま待機: 処理時間 ms / 窓", "result", ["shown", "TaskDuration"]],
+  ["参考情報のシートを開いたまま待機: 処理時間 ms / 窓", "result", ["sheet", "TaskDuration"]],
   ["受付の繰り返し 20 回: 処理時間 ms", "checkinLoop", ["TaskDuration"]],
+  ["受付の繰り返し: 前のヒープ MB", "checkinLoop", ["heapBeforeMB"]],
+  ["受付の繰り返し: 後のヒープ MB", "checkinLoop", ["heapAfterMB"]],
+  ["受付の繰り返し: 前の DOM の要素数", "checkinLoop", ["nodesBefore"]],
+  ["受付の繰り返し: 後の DOM の要素数", "checkinLoop", ["nodesAfter"]],
   ["受付の繰り返し: 読み取りから結果 ms", "checkinLoop", ["hookToResult"]],
   ["カメラの QR: 取り出しから結果 ms（NFR-1）", "cameraLoop", ["scanToResult"]],
   ["カメラの QR: 「次へ」から結果 ms", "cameraLoop", ["tapToResult"]],
