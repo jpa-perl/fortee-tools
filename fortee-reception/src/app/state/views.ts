@@ -7,14 +7,16 @@ import { receptionDisplayName, type ReceptionStatus, receptionStatus } from "../
 import { normalizeSearchText, search, type SearchMatch } from "../../core/search.ts";
 import { combineNames, type Ticket, ticketComparator } from "../../core/snapshot.ts";
 import { buildTemplateContext, renderTemplate } from "../../core/template.ts";
-import { formatTime } from "../../core/time.ts";
+import { formatTimeOnDay } from "../../core/time.ts";
 import {
   autoReception,
+  confirmedPeriod,
   type Operation,
   operations,
   searchIndex,
   snapshotIndex,
   ticketStates,
+  today,
 } from "./derived.ts";
 import {
   config,
@@ -38,10 +40,14 @@ export const REASON_TEXT_MAX = REASON_TEXT_MAX_LENGTH;
 /** 入力された自由記述を、記録に持てる形にする（上限で切り、保存できない文字を除く。S08-M1） */
 export const reasonTextOf = clampReasonText;
 
-/** 画面に出す時刻（画面設計書 2.9）。設定のタイムゾーンで、当日は「08:30」、それ以外は「11/28 08:30」 */
+/**
+ * 画面に出す時刻（画面設計書 2.9）。設定のタイムゾーンで、当日は「08:30」、それ以外は「11/28 08:30」。
+ * 現在時刻（now）ではなく、今日の日付（today）を読む。呼んだ画面は、日付が変わったときにだけ描き直される
+ */
 export function formatClock(epochMs: number): string {
   const current = config.value;
-  return current === null ? "" : formatTime(epochMs, now.value, current.conference.timezone);
+  const day = today.value;
+  return current === null || day === null ? "" : formatTimeOnDay(epochMs, day, current.conference.timezone);
 }
 
 /** 端末名（「端末 7F3K」）。記録の端末 ID からも、同じ規則で出す */
@@ -147,9 +153,7 @@ export function receptionCard(): {
   period: { start: number; end: number } | null;
 } {
   const { reception, manual } = confirmedReception.value;
-  const time = now.value;
-  const period = reception?.periods.find((candidate) => candidate.start <= time && time < candidate.end) ?? null;
-  return { reception, manual, period };
+  return { reception, manual, period: confirmedPeriod.value };
 }
 
 /** S02-M1 の受付の一覧。設定の順。current は、いまの受付の行（「現在」と書き、選べない） */
@@ -298,7 +302,9 @@ export function referenceHtml(): string | null {
     }),
     reception,
     config: settings,
-    now: now.value,
+    // 現在時刻は、済みの時刻を当日かどうかで書き分けるためにだけ使う（core の formatTime()）。now を読むと、
+    // シートを開いている間、1 秒ごとにテンプレートを描画し直す。日付（today）を読んで、変わったときにだけ描き直す
+    now: today.value === null ? 0 : now.peek(),
   });
   const rendered = renderTemplate(settings.template.reference, context);
   return rendered.ok ? rendered.html : null;

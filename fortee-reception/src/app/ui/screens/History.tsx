@@ -1,5 +1,6 @@
+import { useEffect, useRef, useState } from "preact/hooks";
 import { openCancelConfirm, setHistoryFilter } from "../../commands/index.ts";
-import { formatClock, historyOperations, operationView, type OperationView } from "../../state/index.ts";
+import { formatClock, historyOperations, type Operation, operationView, type OperationView } from "../../state/index.ts";
 import { Button } from "../Button.tsx";
 import { Header } from "../Header.tsx";
 import { CheckinIcon, CloudUploadIcon, UndoIcon } from "../icons.tsx";
@@ -7,6 +8,57 @@ import { RecordRow } from "../RecordRow.tsx";
 import { ScreenFrame } from "../ScreenFrame.tsx";
 import { SearchField } from "./Search.tsx";
 import { TicketList, TicketStatus } from "../TicketList.tsx";
+
+/** 最初に描く行の数と、続きを足すときの 1 回の行の数 */
+const HISTORY_CHUNK = 100;
+
+/**
+ * 記録の一覧。先頭から HISTORY_CHUNK 行だけを描き、終わりの近くまでスクロールしたら、続きを足す。
+ * 並びと中身は、全行を描いたときと同じである。記録は数千件になり（PRD NFR-1 の条件）、全行を一度に描くと、
+ * 開くときと絞り込みを消すときに、見えていない行の分まで待たされる。絞り込みが変わったら、先頭からやり直す。
+ * 一覧ごと作り直すのではなく、行の数だけを戻す。絞り込みの前後で残る行は、作り直さずに使い回す
+ */
+function OperationList({ operations, filter }: { operations: Operation[]; filter: string }) {
+  const [grown, setGrown] = useState({ filter, limit: HISTORY_CHUNK });
+  // 絞り込みが変わったら、足した分を捨てる。捨てずに残すと、同じ絞り込みに戻したとき（絞り込みを消したとき）に、
+  // 前に足した行を一度に描く
+  if (grown.filter !== filter) setGrown({ filter, limit: HISTORY_CHUNK });
+  const limit = grown.filter === filter ? grown.limit : HISTORY_CHUNK;
+  const more = operations.length > limit;
+  const shown = more ? operations.slice(0, limit) : operations;
+  /**
+   * 描いてある行の終わりに重ねた、高さ 1000px（20 行ほど）の見えない帯。これが見えたら、続きを足す。
+   * 1 行ではなく帯にするのは、終わりまで一度に飛んだとき（勢いのあるスクロール、End キー）にも見えるようにするため。
+   * キーボードと読み上げで行を順にたどったときも、最後の行に着く前に帯に入る
+   */
+  const tail = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const element = tail.current;
+    if (!more || element === null) return;
+    // 足した後も帯が見えていれば（終わりまで飛んだ直後）、作り直した監視が、もう一度足す
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setGrown((current) => ({ filter, limit: (current.filter === filter ? current.limit : HISTORY_CHUNK) + HISTORY_CHUNK }));
+      }
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [more, limit, filter]);
+
+  return (
+    <div class="relative">
+      <ul>
+        {shown.map((operation) => (
+          <li key={operation.opId}>
+            <RecordRow operation={operation} detail />
+          </li>
+        ))}
+      </ul>
+      {more && <div ref={tail} aria-hidden="true" class="pointer-events-none absolute inset-x-0 bottom-0 h-250" />}
+    </div>
+  );
+}
 
 /** S07 履歴。同期済みのすべての端末の分と、この端末の未同期の分を合わせて、新しい順に並べる */
 export function History({ filter }: { filter: string }) {
@@ -20,17 +72,7 @@ export function History({ filter }: { filter: string }) {
         </>
       }
     >
-      {operations.length === 0 ? (
-        <p class="p-4 text-ink-sub">記録なし</p>
-      ) : (
-        <ul>
-          {operations.map((operation) => (
-            <li key={operation.opId}>
-              <RecordRow operation={operation} detail />
-            </li>
-          ))}
-        </ul>
-      )}
+      {operations.length === 0 ? <p class="p-4 text-ink-sub">記録なし</p> : <OperationList operations={operations} filter={filter} />}
     </ScreenFrame>
   );
 }

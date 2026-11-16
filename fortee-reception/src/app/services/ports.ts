@@ -39,15 +39,37 @@ export type Locks = {
 export type FeedbackKind = "success" | "caution" | "reject";
 
 export type Feedback = {
-  /** 音を鳴らせる状態にする。タップの処理の中で呼ぶ（端末の挙動 11.3） */
+  /**
+   * 音を鳴らせる状態にする。タップの処理の中で呼ぶ（端末の挙動 11.3）。rest() を呼ぶまで、音の出力は休まない。
+   * 呼んだ操作は、音を鳴らす予定がなくなったら（結果を出した、読み取り中を終えた、何も鳴らさずに終わった）、
+   * 必ず rest() を呼ぶ
+   */
   unlock(): void;
   play(kind: FeedbackKind): void;
+  /**
+   * 音を鳴らす予定がなくなった（結果を出した、読み取り中を終えた）。鳴っている音が終わるのを待ってから、音の出力を休ませる。
+   * 次の unlock() で、鳴らせる状態に戻る
+   */
+  rest(): void;
   vibrate(kind: FeedbackKind): void;
   canVibrate(): boolean;
 };
 
-/** 「画像を受け取り文字列か null を返す」関数（Design Doc 6.8 の継ぎ目） */
-export type QrDecoder = (image: ImageData) => string | null;
+/**
+ * 「画像を受け取り文字列か null を返す」関数（Design Doc 6.8 の継ぎ目）。結果は後から届く。
+ * 読み取れなかったときは null。失敗（例外）も、呼び出し側は、読み取れなかったものとして扱う
+ */
+export type QrDecoder = (image: ImageData) => Promise<string | null>;
+
+/**
+ * 映像のコマから、QR を直接探す関数（ブラウザの BarcodeDetector）。画像を画素の配列に取り出さずに済む。
+ * visible は、領域に見えている範囲（映像の画素の座標）で、この範囲に収まっている QR だけを返す。
+ * 失敗（例外）は、呼び出し側が、以後 QrDecoder に切り替える合図にする
+ */
+export type FrameDetector = (
+  video: HTMLVideoElement,
+  visible: { x: number; y: number; width: number; height: number },
+) => Promise<string | null>;
 
 export type Camera = {
   /** 映像を出す要素を渡す。外すときは null */

@@ -1,3 +1,4 @@
+import { zxingQrDecoder } from "../services/qr-decoder.ts";
 import { setFastCheckin } from "./modes.ts";
 import { handleDecoded } from "./scan.ts";
 import type { BootOptions } from "./session.ts";
@@ -22,6 +23,11 @@ export type TestHook = {
    * 確認（S03-D1）が挟まる。確認を確かめないテストが、準備でオンにする
    */
   setFastCheckin(enabled: boolean): Promise<void>;
+  /**
+   * 画像を、カメラの読み取りと同じデコーダ（services/qr-decoder.ts）に渡す。scan() はデコーダを通らないので、
+   * WASM の読み込みとデコードは、これで確かめる。判定には進まない
+   */
+  decode(image: ImageData): Promise<string | null>;
 };
 
 declare global {
@@ -48,5 +54,5 @@ export function testBootOptions(): BootOptions {
 
 /** main.tsx が、起動のときに 1 回だけ呼ぶ */
 export function installTestHook(): void {
-  window.__checkinTest = { scan: handleDecoded, setFastCheckin };
+  window.__checkinTest = { scan: handleDecoded, setFastCheckin, decode: zxingQrDecoder };
 }

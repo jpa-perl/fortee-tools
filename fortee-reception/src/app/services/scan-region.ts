@@ -29,3 +29,33 @@ export function decodeSize(source: Size, maxSide: number = DECODE_MAX_SIDE): Siz
     height: Math.max(1, Math.round(source.height * ratio)),
   };
 }
+
+/** 映像の中で見つかった QR。四隅は、映像の画素の座標 */
+export type DetectedCode = { text: string; corners: readonly { x: number; y: number }[] };
+
+/**
+ * 映像の全体から見つかった QR のうち、領域に見えている範囲（visibleSourceRect()）に四隅がすべて入っているものを
+ * 1 つ選んで、その文字列を返す。なければ null。読み取るのは、画面に出ている範囲だけである（画面設計書 S03）。
+ * 複数あれば、範囲の中央に最も近いものを選ぶ。スタッフは、読み取る QR を枠の中央に合わせるためである
+ */
+export function pickVisibleCode(codes: readonly DetectedCode[], visible: Rect): string | null {
+  const centerX = visible.x + visible.width / 2;
+  const centerY = visible.y + visible.height / 2;
+  let best: { text: string; distance: number } | null = null;
+  for (const code of codes) {
+    if (code.text === "" || code.corners.length === 0) continue;
+    const inside = code.corners.every(
+      (corner) =>
+        corner.x >= visible.x &&
+        corner.x <= visible.x + visible.width &&
+        corner.y >= visible.y &&
+        corner.y <= visible.y + visible.height,
+    );
+    if (!inside) continue;
+    const x = code.corners.reduce((sum, corner) => sum + corner.x, 0) / code.corners.length;
+    const y = code.corners.reduce((sum, corner) => sum + corner.y, 0) / code.corners.length;
+    const distance = (x - centerX) ** 2 + (y - centerY) ** 2;
+    if (best === null || distance < best.distance) best = { text: code.text, distance };
+  }
+  return best?.text ?? null;
+}

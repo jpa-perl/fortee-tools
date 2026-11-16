@@ -27,6 +27,9 @@ const TEST_SOUND_GAP_MS = 700;
 export function testSound(): void {
   const { feedback, platform } = rt.ports;
   feedback.unlock();
+  // 鳴らす予定は、この 3 つだけ。先に知らせておけば、最後の音が鳴り終わった後に、音の出力が休む。
+  // 鳴らしている途中で読み取りを始めても、残りの音が、読み取り中の音の出力を休ませることはない
+  feedback.rest();
   const kinds: FeedbackKind[] = ["success", "caution", "reject"];
   kinds.forEach((kind, i) => {
     if (i === 0) feedback.play(kind);

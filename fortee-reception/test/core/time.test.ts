@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   checkLocalDateTime,
+  dayKey,
   formatOffsetIso,
   formatTime,
+  formatTimeOnDay,
   isValidTimezone,
   localDateTimeToEpochMs,
   offsetMsAt,
@@ -37,6 +39,25 @@ describe("時刻の整形（画面設計書 2.9）", () => {
     // 日本時間で同じ日でも、ニューヨークでは日付をまたぐ
     expect(formatTime(jst(2026, 11, 28, 8, 30), jst(2026, 11, 28, 20, 0), TOKYO)).toBe("08:30");
     expect(formatTime(jst(2026, 11, 28, 8, 30), jst(2026, 11, 28, 20, 0), NEW_YORK)).toBe("11/27 18:30");
+  });
+});
+
+describe("日付の値（当日かどうかの比較）", () => {
+  it("設定のタイムゾーンで同じ日付なら同じ値になり、0 時に変わる", () => {
+    expect(dayKey(jst(2026, 11, 28, 0, 0), TOKYO)).toBe(20261128);
+    expect(dayKey(jst(2026, 11, 28, 23, 59, 59), TOKYO)).toBe(20261128);
+    expect(dayKey(jst(2026, 11, 29, 0, 0), TOKYO)).toBe(20261129);
+    // 日本時間の 11/28 08:30 は、ニューヨークでは 11/27
+    expect(dayKey(jst(2026, 11, 28, 8, 30), NEW_YORK)).toBe(20261127);
+  });
+
+  it("日付の値で整形した結果は、その日のどの時刻を現在時刻にした結果とも同じ", () => {
+    const today = dayKey(jst(2026, 11, 28, 12, 0), TOKYO);
+    for (const epochMs of [jst(2026, 11, 28, 8, 30), jst(2026, 11, 27, 23, 59, 59), jst(2026, 11, 29, 0, 0), jst(2025, 11, 28, 8, 30)]) {
+      for (const now of [jst(2026, 11, 28, 0, 0), jst(2026, 11, 28, 12, 0), jst(2026, 11, 28, 23, 59, 59)]) {
+        expect(formatTimeOnDay(epochMs, today, TOKYO)).toBe(formatTime(epochMs, now, TOKYO));
+      }
+    }
   });
 });
 

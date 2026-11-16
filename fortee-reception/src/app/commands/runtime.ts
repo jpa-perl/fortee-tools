@@ -50,9 +50,30 @@ export function fatal(error: unknown): void {
   judging.value = false;
   overlay.value = null;
   screen.value = { id: "S99", error: message };
+  // 読み取り中に移ったときに、カメラを止める。画面が映像の要素を外すだけでは、映像の取り込みと、
+  // 150 ms ごとの読み取りの処理が、読み込み直すまで残る。ここで失敗しても、残りの後始末（音の出力を
+  // 休ませることも含む）は行う
+  try {
+    stopCameraAndRest();
+  } catch (cause) {
+    console.error(cause);
+  }
   rt.ports.wakeLock.set(false);
   rt.ports.historyGuard.setArmed(false);
   rt.settle();
+}
+
+/**
+ * カメラを止めて、音の出力を休ませる。読み取り中かもしれない画面を、操作（commands/scan.ts）の外から終える
+ * とき（受付なし、再ログイン、ログアウト、想定外のエラー）に呼ぶ。カメラだけを止めると、音の出力が動いたまま
+ * 残る。カメラを止めるのに失敗しても、音の出力は休ませる
+ */
+export function stopCameraAndRest(): void {
+  try {
+    rt.ports.camera.stop();
+  } finally {
+    rt.ports.feedback.rest();
+  }
 }
 
 // ───────── 記憶域 ─────────

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { isAbsolute, join, resolve } from "node:path";
 import type { Plugin } from "vite";
+import { ZXING_WASM_SHA256 } from "zxing-wasm/reader";
 import { readConfigFileHead } from "../src/cli/config-file.ts";
 import { PROJECT_ROOT } from "../src/cli/paths.ts";
 import { describeRelease } from "../src/cli/release.ts";
@@ -20,6 +21,7 @@ import { APP_ICONS, appIconPng } from "./app-icon.ts";
 // - リリース名を受付アプリに埋め込む
 // - テスト用の入口（src/app/commands/test-hook.ts）を入れるかを、受付アプリに埋め込む
 // - ホーム画面のアイコンを描いて、受付アプリの出力に加える（app-icon.ts）
+// - QR の読み取り用の WASM（zxing-wasm の reader）が、出力にちょうど 1 つあり、評価した版の中身であることを確かめる
 //
 // vite-plugin-pwa を使わない理由は、フロントエンド 5.2 にある。
 
@@ -53,6 +55,12 @@ function releaseName(): string {
   // 同期の要求の appVersion の上限（Design Doc 4.5）
   return release.slice(0, APP_VERSION_MAX_LENGTH);
 }
+
+/**
+ * QR の読み取り用の WASM（zxing-wasm 3.1.7 の reader）の SHA-256（zxing-wasm の導入指針）。
+ * zxing-wasm の版を上げるときは、配布物を確かめ直してから、この値を書き換える
+ */
+const READER_WASM_SHA256 = "33c8c50be17d0bb05454b4fd3ffb5b5ab9a8e8d1c0ebeb21a1adf4a89c1a8b59";
 
 const sha256 = (data: string | Uint8Array): string => createHash("sha256").update(data).digest("hex");
 
@@ -198,6 +206,18 @@ export function appShell(): Plugin {
 
         // Service Worker が照合するハッシュは、配信される中身（キャッシュ名を埋め込んだ後の index.html）から求める
         const files = digests();
+
+        // QR の読み取り用の WASM。一覧から漏れると、オフラインでアプリを開けても QR を読み取れない。
+        // full と writer の WASM は使わない。中身は、評価した版のものと、パッケージが公開する値の両方に合わせる
+        const wasm = served.filter((file) => file.fileName.endsWith(".wasm"));
+        const [reader] = wasm;
+        if (wasm.length !== 1 || reader === undefined) {
+          throw new Error(`出力の WASM が ${wasm.length} 個ある。QR の読み取り用の 1 個だけでなければならない`);
+        }
+        const readerDigest = files.find((file) => file.url === `/${reader.fileName}`)?.sha256;
+        if (readerDigest !== READER_WASM_SHA256 || readerDigest !== ZXING_WASM_SHA256) {
+          throw new Error(`${reader.fileName} の中身が、評価した版の zxing-wasm の reader のものと違う`);
+        }
         for (const required of ["/", `/${MANIFEST_FILE}`]) {
           if (!files.some((file) => file.url === required)) {
             throw new Error(`事前にキャッシュする一覧に ${required} がない`);

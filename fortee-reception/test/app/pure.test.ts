@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createHistoryGuard, type HistoryLike } from "../../src/app/services/history-guard.ts";
-import { decodeSize, visibleSourceRect } from "../../src/app/services/scan-region.ts";
+import { decodeSize, pickVisibleCode, visibleSourceRect } from "../../src/app/services/scan-region.ts";
 
 // DOM から切り離した関数（Design Doc 11 章）。状態を持つモジュールの関数は、app.test.ts で実体を作って確かめる
 
@@ -122,5 +122,44 @@ describe("番人のエントリの管理（Design Doc 6.9）", () => {
     h.flush();
     expect(backs).toBe(0);
     expect(h.entries).toHaveLength(2);
+  });
+});
+
+describe("検出器が映像の全体から見つけた QR の選択（画面設計書 S03）", () => {
+  // 映像 480×640 を、幅 390、高さ 280 の領域に収めたときに見えている範囲
+  const visible = visibleSourceRect({ width: 480, height: 640 }, { width: 390, height: 280 });
+  if (visible === null) throw new Error("範囲がない");
+  const square = (x: number, y: number, size = 60) => [
+    { x, y },
+    { x: x + size, y },
+    { x: x + size, y: y + size },
+    { x, y: y + size },
+  ];
+  const middle = visible.y + visible.height / 2;
+
+  it("見えている範囲に収まっている QR の文字列を返す", () => {
+    expect(pickVisibleCode([{ text: "a", corners: square(200, middle - 30) }], visible)).toBe("a");
+  });
+
+  it("見えている範囲の外にある QR と、範囲からはみ出している QR は返さない", () => {
+    expect(pickVisibleCode([{ text: "above", corners: square(200, visible.y - 100) }], visible)).toBeNull();
+    expect(pickVisibleCode([{ text: "cut", corners: square(200, visible.y - 10) }], visible)).toBeNull();
+    expect(pickVisibleCode([{ text: "below", corners: square(200, visible.y + visible.height + 5) }], visible)).toBeNull();
+  });
+
+  it("複数あれば、範囲の中央に最も近いものを返す。外にあるものは、中央に近くても選ばない", () => {
+    const codes = [
+      { text: "edge", corners: square(10, visible.y + 5) },
+      { text: "center", corners: square(210, middle - 30) },
+      { text: "outside", corners: square(210, visible.y - 20) },
+    ];
+    expect(pickVisibleCode(codes, visible)).toBe("center");
+    expect(pickVisibleCode([...codes].reverse(), visible)).toBe("center");
+  });
+
+  it("何も見つからなければ null。空の文字列と、四隅のない結果は使わない", () => {
+    expect(pickVisibleCode([], visible)).toBeNull();
+    expect(pickVisibleCode([{ text: "", corners: square(200, middle - 30) }], visible)).toBeNull();
+    expect(pickVisibleCode([{ text: "a", corners: [] }], visible)).toBeNull();
   });
 });
