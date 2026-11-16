@@ -129,6 +129,10 @@ export async function shot(page: Page, testInfo: TestInfo, name: string): Promis
 declare global {
   interface Window {
     // src/app/commands/test-hook.ts の TestHook と同じ形
-    __checkinTest?: { scan(text: string): void; setFastCheckin(enabled: boolean): Promise<void> };
+    __checkinTest?: {
+      scan(text: string): void;
+      setFastCheckin(enabled: boolean): Promise<void>;
+      decode(image: ImageData): Promise<string | null>;
+    };
   }
 }

@@ -32,6 +32,7 @@ fortee 連携チェックインシステムの文書である。fortee が発行
 | --- | --- |
 | [research/backend.md](research/backend.md) | バックエンドの選定の記録。ホスティング（Cloudflare Workers）と DB（D1 と KV）の構成と理由、負荷の見積もり、管理操作の経路、実行環境の制約と実測、運用上の制約、構築時の確認事項、採らなかった候補 |
 | [research/frontend.md](research/frontend.md) | フロントエンドの選定の記録。CSS（Tailwind CSS v4）、描画（Preact）、言語とビルド（Vite）、Service Worker、記憶域、QR のデコード、フォントの候補と判断、構築時の確認事項 |
+| [research/zxing-wasm-integration.md](research/zxing-wasm-integration.md) | zxing-wasm v3.1.7 を採用する場合の導入指針。配布物の評価範囲、WASM の同梱、既存の読み取り処理との接続、オフラインと実機での確認事項 |
 | [research/device-behavior.md](research/device-behavior.md) | iOS と Android の端末の挙動（Discord ログインの戻り先、カメラ、音、スリープ、オフライン起動、データの保持）を検証した結果と、実装に引き継ぐ知見・コード |
 | [research/fortee/](research/fortee/README.md) | fortee の仕様の調査結果と、独自実装に効く fortee 側の制約。取り込みと反映（管理 CLI）を作るときに参照する |
 

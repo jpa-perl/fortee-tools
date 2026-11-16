@@ -49,8 +49,8 @@ const layer = {
   app: [
     { regex: into("sw", "worker", "cli", "build", "test"), message: "app が依存してよい層は core だけ。" },
     {
-      regex: packagesExcept("preact(/|$)", "@preact/signals$", "idb$", "jsqr$"),
-      message: "app が依存してよいライブラリは Preact、@preact/signals、idb、jsQR だけ。",
+      regex: packagesExcept("preact(/|$)", "@preact/signals$", "idb$", "zxing-wasm/reader(/|$)"),
+      message: "app が依存してよいライブラリは Preact、@preact/signals、idb、zxing-wasm の reader だけ。",
     },
   ],
   sw: [{ regex: "^", message: "Service Worker は、ほかのファイルを読み込まない。一覧と版はビルドが埋め込む。" }],
@@ -79,7 +79,7 @@ const appLayer = {
       allowTypeImports: true,
       message: "ui は core を直接呼ばない。型だけは import してよい。",
     },
-    { regex: "^(idb|jsqr)$", message: "ui は記憶域とデコードを直接使わない。" },
+    { regex: "^(idb$|zxing-wasm(/|$))", message: "ui は記憶域とデコードを直接使わない。" },
   ],
   state: [{ regex: into("ui", "commands", "services", "storage"), message: "state が依存してよいのは core だけ。" }],
   commands: [{ regex: into("ui"), message: "commands は ui を知らない。" }],

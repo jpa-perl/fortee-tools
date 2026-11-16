@@ -67,7 +67,8 @@ const rows: [string, string, string[]][] = [
   ["1 回の読み取り（キャンバスを使い回す）: 中央値 ms", "pipeline", ["reuse", "totalMedian"]],
   ["  うち drawImage ms", "pipeline", ["current", "steps", "drawImage"]],
   ["  うち getImageData ms", "pipeline", ["current", "steps", "getImageData"]],
-  ["  うち jsQR ms", "pipeline", ["current", "steps", "decode"]],
+  ["  うちデコード（zxing-wasm）ms", "pipeline", ["current", "steps", "decode"]],
+  ["  参考: 同じ画像の jsQR ms（合計に含めない）", "pipeline", ["current", "steps", "jsQR"]],
   ["  うち大きさの入れ直しと文脈の取得 ms", "pipeline", ["current", "steps", "resize"]],
 ];
 

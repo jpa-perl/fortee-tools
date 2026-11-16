@@ -33,6 +33,9 @@ describe("層のあいだの依存の方向（Design Doc 3.1、3.2）", () => {
     ["src/app/x.ts", 'import { jsonParam } from "../cli/sql.ts";'],
     ["src/app/x.ts", 'import { Hono } from "hono";'],
     ["src/app/x.ts", 'import { readFileSync } from "node:fs";'],
+    ["src/app/x.ts", 'import jsQR from "jsqr";'],
+    ["src/app/x.ts", 'import { readBarcodes } from "zxing-wasm";'],
+    ["src/app/x.ts", 'import { writeBarcode } from "zxing-wasm/writer";'],
     ["src/sw/x.ts", 'import { SYNC_PROTOCOL_VERSION } from "../core/versions.ts";'],
     ["src/worker/x.ts", 'import { jsonParam } from "../cli/sql.ts";'],
     ["src/worker/x.ts", 'import { openDatabase } from "../app/storage/db.ts";'],
@@ -47,7 +50,7 @@ describe("層のあいだの依存の方向（Design Doc 3.1、3.2）", () => {
 
   it.each([
     ["src/core/x.ts", 'import * as z from "zod/mini";\nexport { uuidSchema } from "./fields.ts";\nexport const s = z.string();'],
-    ["src/app/x.ts", 'import { render } from "preact";\nimport { signal } from "@preact/signals";\nimport { openDB } from "idb";\nexport { SYNC_PROTOCOL_VERSION } from "../core/versions.ts";\nexport const a = [render, signal, openDB];'],
+    ["src/app/x.ts", 'import { render } from "preact";\nimport { signal } from "@preact/signals";\nimport { openDB } from "idb";\nimport { readBarcodes } from "zxing-wasm/reader";\nimport wasmUrl from "zxing-wasm/reader/zxing_reader.wasm?url";\nexport { SYNC_PROTOCOL_VERSION } from "../core/versions.ts";\nexport const a = [render, signal, openDB, readBarcodes, wasmUrl];'],
     ["src/worker/x.ts", 'import { Hono } from "hono";\nimport { getCookie } from "hono/cookie";\nexport { syncRequestSchema } from "../core/sync.ts";\nexport const a = [Hono, getCookie];'],
     ["src/cli/x.ts", 'import { readFile } from "node:fs/promises";\nimport { parse } from "smol-toml";\nexport { conferenceSchema } from "../core/config.ts";\nexport const a = [readFile, parse];'],
   ])("%s が依存してよいものは通す", async (path, code) => {

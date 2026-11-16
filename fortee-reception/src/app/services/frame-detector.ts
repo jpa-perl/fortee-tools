@@ -4,8 +4,8 @@ import { type DetectedCode, pickVisibleCode } from "./scan-region.ts";
 
 // ブラウザの BarcodeDetector による QR の検出（Design Doc 6.8）。
 //
-// BarcodeDetector は、OS の検出器（Android は Google Play 開発者サービス）を使う。JavaScript のデコーダ（jsQR）は、
-// 読み取り中の処理時間の 8 割強を占める（開発環境の構築 4.4 の計測）ので、使える環境ではこちらを使う。
+// BarcodeDetector は、OS の検出器（Android は Google Play 開発者サービス）を使う。映像のコマを画素の配列に
+// 取り出さずに済み、デコーダ（zxing-wasm）の WASM も読み込まずに済むので、使える環境ではこちらを使う。
 // iOS の Safari にはなく、Android でも、検出器が端末にまだ入っていないとき（オフラインでの初回など）は使えない。
 // 使えないときは null を返し、カメラのサービスが、これまでどおりキャンバスと QrDecoder で読み取る。
 //

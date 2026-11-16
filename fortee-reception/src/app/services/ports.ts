@@ -55,8 +55,11 @@ export type Feedback = {
   canVibrate(): boolean;
 };
 
-/** 「画像を受け取り文字列か null を返す」関数（Design Doc 6.8 の継ぎ目） */
-export type QrDecoder = (image: ImageData) => string | null;
+/**
+ * 「画像を受け取り文字列か null を返す」関数（Design Doc 6.8 の継ぎ目）。結果は後から届く。
+ * 読み取れなかったときは null。失敗（例外）も、呼び出し側は、読み取れなかったものとして扱う
+ */
+export type QrDecoder = (image: ImageData) => Promise<string | null>;
 
 /**
  * 映像のコマから、QR を直接探す関数（ブラウザの BarcodeDetector）。画像を画素の配列に取り出さずに済む。

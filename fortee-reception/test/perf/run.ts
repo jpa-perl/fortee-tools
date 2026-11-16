@@ -9,7 +9,8 @@ import { addSessionCookie, goOffline, scanButton } from "../e2e/helpers.ts";
 import { type QrMatrix, qrMatrix } from "../e2e/qr-matrix.ts";
 import { E2E_ENVIRONMENTS, e2eOrigin } from "../e2e/setup/data.ts";
 import { readTlsOptions } from "../e2e/setup/tls.ts";
-import { DECODER_SIDES, decoderBench, pipelineBench, seedDatabase } from "./in-page.ts";
+import { ZXING_READER_OPTIONS } from "../../src/app/services/zxing-options.ts";
+import { DECODER_SIDES, decoderBench, pipelineBench, prepareZxing, seedDatabase } from "./in-page.ts";
 
 // 長時間運用の CPU 負荷の計測（変更の前後を、同じ条件で比べるためのもの）。
 //
@@ -34,7 +35,7 @@ const RUNS = Number(option("runs", "3"));
 const WINDOW_S = Number(option("window", "30"));
 const SCALE = Number(option("scale", "1"));
 const ONLY = option("only", "").split(",").filter((name) => name !== "");
-/** ブラウザの検出器（BarcodeDetector）を隠して、キャンバスと jsQR の経路で読み取らせる */
+/** ブラウザの検出器（BarcodeDetector）を隠して、キャンバスとデコーダ（zxing-wasm）の経路で読み取らせる */
 const NO_DETECTOR = args.includes("--no-detector");
 const TICKETS = 1500 * SCALE;
 const RECORDS = 3000 * SCALE;
@@ -415,17 +416,24 @@ const scenarios: Record<string, (browser: Browser, qrBrowser: Browser) => Promis
     const { context, page } = await open(browser);
     await scanButton(page).click();
     await page.waitForFunction(() => (document.querySelector("video")?.videoWidth ?? 0) > 0);
-    await page.addScriptTag({ content: readFileSync(join(PROJECT_ROOT, "node_modules", "jsqr", "dist", "jsQR.js"), "utf8") });
-    const result = await page.evaluate(pipelineBench, { iterations: 200 });
+    await addDecoders(page);
+    const result = await page.evaluate(pipelineBench, { iterations: 200, zxingOptions: ZXING_READER_OPTIONS });
     await context.close();
     return result;
   },
 };
 
+/** デコーダ（置き換える前の jsQR と、アプリが使う zxing-wasm の reader）を、ページに入れる。アプリのものとは別に読み込む */
+async function addDecoders(page: Page): Promise<void> {
+  await page.addScriptTag({ content: readFileSync(join(PROJECT_ROOT, "node_modules", "jsqr", "dist", "jsQR.js"), "utf8") });
+  const zxing = join(PROJECT_ROOT, "node_modules", "zxing-wasm", "dist");
+  await page.addScriptTag({ content: readFileSync(join(zxing, "iife", "reader", "index.js"), "utf8") });
+  await page.evaluate(prepareZxing, readFileSync(join(zxing, "reader", "zxing_reader.wasm")).toString("base64"));
+}
+
 /** デコーダだけの時間と成功率。合成の画像を、ページの中で作って渡す。iOS の JavaScriptCore に近い WebKit でも測る */
 async function decoder(): Promise<unknown> {
   const matrix = qrMatrix(`fortee:${perfToken(0)}`);
-  const script = readFileSync(join(PROJECT_ROOT, "node_modules", "jsqr", "dist", "jsQR.js"), "utf8");
   const result: Record<string, unknown> = {};
   for (const [name, type] of [["chromium", chromium], ["webkit", webkit]] as const) {
     const browser = await type.launch();
@@ -433,8 +441,8 @@ async function decoder(): Promise<unknown> {
     // ブラウザの検出器（BarcodeDetector）は、安全なコンテキストでだけ使える。通信はせずに、https のページとして開く
     await page.route("https://perf.invalid/", (route) => route.fulfill({ contentType: "text/html", body: "<!doctype html><title>perf</title>" }));
     await page.goto("https://perf.invalid/");
-    await page.addScriptTag({ content: script });
-    result[name] = await page.evaluate(decoderBench, { matrix, sides: DECODER_SIDES, iterations: 30 });
+    await addDecoders(page);
+    result[name] = await page.evaluate(decoderBench, { matrix, sides: DECODER_SIDES, iterations: 30, zxingOptions: ZXING_READER_OPTIONS });
     await browser.close();
   }
   return result;

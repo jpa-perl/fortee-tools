@@ -93,14 +93,19 @@ export async function seedDatabase(input: { tickets: number; records: number; no
 }
 
 type JsQr = (data: Uint8ClampedArray, width: number, height: number, options: { inversionAttempts: string }) => { data: string } | null;
+/** zxing-wasm の reader の IIFE 版（window.ZXingWASM）。run.ts が、ページに入れて、WASM の取得先を上書きする */
+type ZXing = { readBarcodes(image: ImageData, options: Record<string, unknown>): Promise<{ text: string }[]> };
 
 /**
  * 読み取りの 1 回の処理（services/camera.ts の grab()）の内訳。読み取り中の映像の要素から、同じ切り出しと
  * 縮小で取り出す。current は、毎回キャンバスの大きさを入れ直して文脈を取り直す手順、reuse は、大きさが
  * 同じなら入れ直さず、文脈を持ち回る手順。2 つを交互に、50 ms おきに行う。値は 1 回あたりの ms
  */
-export async function pipelineBench(input: { iterations: number }): Promise<Record<string, unknown>> {
+export async function pipelineBench(input: { iterations: number; zxingOptions: Record<string, unknown> }): Promise<Record<string, unknown>> {
   const jsQR = (window as unknown as { jsQR: JsQr }).jsQR;
+  const zxing = (window as unknown as { ZXingWASM: ZXing }).ZXingWASM;
+  // 初期化を、計測の外で済ませる
+  await zxing.readBarcodes(new ImageData(8, 8), input.zxingOptions);
   const video = document.querySelector("video");
   if (video === null) throw new Error("映像の要素がない");
   const scale = Math.max(video.clientWidth / video.videoWidth, video.clientHeight / video.videoHeight);
@@ -112,14 +117,15 @@ export async function pipelineBench(input: { iterations: number }): Promise<Reco
   const width = Math.max(1, Math.round(sw * ratio));
   const height = Math.max(1, Math.round(sh * ratio));
 
-  const steps = ["resize", "getContext", "mark", "drawImage", "getImageData", "decode"] as const;
+  // decode は、アプリのデコーダ（zxing-wasm）。jsQR は、置き換える前のデコーダで、比べるために同じ画像を渡す
+  const steps = ["resize", "getContext", "mark", "drawImage", "getImageData", "decode", "jsQR"] as const;
   const blank = (): Record<string, number> => Object.fromEntries(steps.map((step) => [step, 0]));
   const sums = { current: blank(), reuse: blank() };
   const totals: { current: number[]; reuse: number[] } = { current: [], reuse: [] };
   const canvases = { current: document.createElement("canvas"), reuse: document.createElement("canvas") };
   let reused: CanvasRenderingContext2D | null = null;
 
-  const once = (variant: "current" | "reuse"): void => {
+  const once = async (variant: "current" | "reuse"): Promise<void> => {
     const canvas = canvases[variant];
     const sum = sums[variant];
     let t = performance.now();
@@ -144,9 +150,11 @@ export async function pipelineBench(input: { iterations: number }): Promise<Reco
     lap("drawImage");
     const image = context.getImageData(0, 0, width, height);
     lap("getImageData");
-    jsQR(image.data, image.width, image.height, { inversionAttempts: "dontInvert" });
+    await zxing.readBarcodes(image, input.zxingOptions);
     lap("decode");
     totals[variant].push(performance.now() - start);
+    jsQR(image.data, image.width, image.height, { inversionAttempts: "dontInvert" });
+    lap("jsQR");
   };
 
   // コマのあいだの変化の量の概算（読み取りの頻度を、変化の量で変える案の費用）。映像を 32×24 に縮めて、
@@ -174,7 +182,7 @@ export async function pipelineBench(input: { iterations: number }): Promise<Reco
   };
 
   for (let i = 0; i < input.iterations; i++) {
-    once(i % 2 === 0 ? "current" : "reuse");
+    await once(i % 2 === 0 ? "current" : "reuse");
     signature();
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
@@ -202,11 +210,21 @@ export async function pipelineBench(input: { iterations: number }): Promise<Reco
 }
 
 /**
- * デコーダ（jsQR）だけの時間と成功率。合成の画像を、条件（QR なし、大きい QR、小さい QR、暗い、反射、ぼけ、
+ * デコーダ（アプリが使う zxing-wasm と、置き換える前の jsQR）だけの時間と成功率。合成の画像を、条件（QR なし、大きい QR、小さい QR、暗い、反射、ぼけ、
  * 手ぶれ）ごとに、位置と傾きと雑音を変えて iterations 枚ずつ作り、長辺を sides の各値に縮めて渡す
  */
-export async function decoderBench(input: { matrix: QrMatrix; sides: number[]; iterations: number }): Promise<Record<string, unknown>> {
+export async function decoderBench(input: {
+  matrix: QrMatrix;
+  sides: number[];
+  iterations: number;
+  zxingOptions: Record<string, unknown>;
+}): Promise<Record<string, unknown>> {
   const jsQR = (window as unknown as { jsQR: JsQr }).jsQR;
+  const zxing = (window as unknown as { ZXingWASM: ZXing }).ZXingWASM;
+  // 初期化（WASM の取得とコンパイル）にかかる時間。読み取りの時間には含めない
+  const initStart = performance.now();
+  await zxing.readBarcodes(new ImageData(8, 8), input.zxingOptions);
+  const zxingInitMs = performance.now() - initStart;
   const BASE_W = 1280;
   const BASE_H = 920;
   // ブラウザの検出器（BarcodeDetector）。あれば、同じ画像で、成功率と、結果が届くまでの時間を比べる。
@@ -320,9 +338,13 @@ export async function decoderBench(input: { matrix: QrMatrix; sides: number[]; i
     const hits: Record<number, number> = {};
     const nativeTimes: Record<string, number[]> = { full: [], side640: [] };
     const nativeHits: Record<string, number> = { full: 0, side640: 0 };
+    const zxingTimes: Record<number, number[]> = {};
+    const zxingHits: Record<number, number> = {};
     for (const side of input.sides) {
       times[side] = [];
       hits[side] = 0;
+      zxingTimes[side] = [];
+      zxingHits[side] = 0;
     }
     for (let i = 0; i < input.iterations; i++) {
       const source = draw(variant);
@@ -348,6 +370,11 @@ export async function decoderBench(input: { matrix: QrMatrix; sides: number[]; i
         const found = jsQR(image.data, image.width, image.height, { inversionAttempts: "dontInvert" });
         times[side]?.push(performance.now() - start);
         if (found !== null) hits[side] = (hits[side] ?? 0) + 1;
+        // Promise を返すが、デコードはメインスレッドで行われる。結果が届くまでの時間が、止まる時間に当たる
+        const zxingStart = performance.now();
+        const zxingFound = await zxing.readBarcodes(image, input.zxingOptions);
+        zxingTimes[side]?.push(performance.now() - zxingStart);
+        if (zxingFound.length > 0) zxingHits[side] = (zxingHits[side] ?? 0) + 1;
         if (native !== null && side === 640) {
           const nativeStart = performance.now();
           const nativeFound = await native.detect(image);
@@ -365,7 +392,8 @@ export async function decoderBench(input: { matrix: QrMatrix; sides: number[]; i
       };
     };
     output[variant.name] = {
-      ...Object.fromEntries(input.sides.map((side) => [side, summarize(times[side] ?? [], hits[side] ?? 0)])),
+      ...Object.fromEntries(input.sides.map((side) => [`jsqr${side}`, summarize(times[side] ?? [], hits[side] ?? 0)])),
+      ...Object.fromEntries(input.sides.map((side) => [`zxing${side}`, summarize(zxingTimes[side] ?? [], zxingHits[side] ?? 0)])),
       ...(native === null
         ? {}
         : {
@@ -374,5 +402,17 @@ export async function decoderBench(input: { matrix: QrMatrix; sides: number[]; i
           }),
     };
   }
+  output.zxingInitMs = round(zxingInitMs);
   return output;
+}
+
+/**
+ * zxing-wasm の reader（IIFE 版）に、WASM の中身を直接渡す。ライブラリの既定の取得先（CDN）へ取りに行かせない。
+ * run.ts が、IIFE 版のスクリプトをページに入れた後に呼ぶ
+ */
+export function prepareZxing(wasmBase64: string): void {
+  const binary = Uint8Array.from(atob(wasmBase64), (char) => char.charCodeAt(0));
+  (window as unknown as { ZXingWASM: { prepareZXingModule(options: unknown): void } }).ZXingWASM.prepareZXingModule({
+    overrides: { wasmBinary: binary.buffer },
+  });
 }

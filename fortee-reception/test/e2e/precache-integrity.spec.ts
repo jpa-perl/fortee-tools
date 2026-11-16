@@ -19,6 +19,7 @@ const CONTENT_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".webmanifest": "application/manifest+json",
   ".png": "image/png",
+  ".wasm": "application/wasm",
 };
 
 /** sw.js を配った後の要求（事前のキャッシュ）への応答を書き換える */
