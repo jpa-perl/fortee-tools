@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { epochMsSchema } from "../../src/core/fields.ts";
 import {
   checkLocalDateTime,
   dayKey,
@@ -72,6 +73,38 @@ describe("一括チェックイン CSV の日時（PRD 7.3）", () => {
     expect(formatOffsetIso(Date.UTC(2026, 11, 1, 12, 0, 0), NEW_YORK)).toBe("2026-12-01T07:00:00-05:00");
     expect(formatOffsetIso(Date.UTC(2026, 0, 1, 0, 0, 0), "UTC")).toBe("2026-01-01T00:00:00+00:00");
     expect(formatOffsetIso(Date.UTC(2026, 0, 1, 0, 0, 0), "Asia/Kolkata")).toBe("2026-01-01T05:30:00+05:30");
+  });
+});
+
+describe("時刻の範囲（Design Doc 4.7）", () => {
+  /** Date が表せる時刻の端（ECMAScript の時刻の値の範囲。±8.64e15 ミリ秒） */
+  const DATE_MAX = 8.64e15;
+  const throws = (fn: () => unknown): boolean => {
+    try {
+      fn();
+      return false;
+    } catch {
+      return true;
+    }
+  };
+
+  it("スキーマが通す時刻は、どれも整形できる。整形できない時刻は、スキーマが通さない", () => {
+    // 画面（formatTimeOnDay）と書き出し（formatOffsetIso）は、スキーマを通った記録の時刻を、確かめ直さずに整形する
+    for (const epochMs of [DATE_MAX, DATE_MAX + 1, -DATE_MAX, -DATE_MAX - 1, Number.MAX_SAFE_INTEGER, 0]) {
+      const accepted = epochMsSchema.safeParse(epochMs).success;
+      for (const timezone of [TOKYO, NEW_YORK, "Pacific/Kiritimati"]) {
+        const formattable =
+          !throws(() => formatTimeOnDay(epochMs, 0, timezone)) && !throws(() => formatOffsetIso(epochMs, timezone));
+        expect(accepted, `${epochMs} ${timezone}`).toBe(formattable);
+      }
+    }
+  });
+
+  it("整数でない時刻は通さない", () => {
+    expect(epochMsSchema.safeParse(1.5).success).toBe(false);
+    expect(epochMsSchema.safeParse(Number.NaN).success).toBe(false);
+    expect(epochMsSchema.safeParse(Number.POSITIVE_INFINITY).success).toBe(false);
+    expect(epochMsSchema.safeParse("1764300000000").success).toBe(false);
   });
 });
 

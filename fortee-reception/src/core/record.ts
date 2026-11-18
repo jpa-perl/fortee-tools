@@ -2,9 +2,10 @@ import * as z from "zod/mini";
 import {
   epochMsSchema,
   identifierSchema,
-  NAME_MAX_LENGTH,
+  nameSchema,
   operatorIdSchema,
   ticketTokenSchema,
+  UNSTORABLE,
   uuidSchema,
 } from "./fields.ts";
 
@@ -16,15 +17,8 @@ export const REASON_TEXT_MAX_LENGTH = 2000;
 /** 1 件の取り消しの記録が指せるチェックインの記録 ID の数。超えるときは同じ操作 ID で記録を分ける */
 export const TARGET_RECORD_IDS_MAX = 50;
 
-const name = z.string().check(z.maxLength(NAME_MAX_LENGTH));
-
-/**
- * D1 に保存して読み戻すと変わる文字。対になっていないサロゲートは UTF-8 にできず、読み戻すと 1 つが
- * 3 つの U+FFFD になる（ローカルの D1 で確かめた）。u フラグの下では、対になったサロゲートは 1 文字として
- * 扱われるので、\p{Cs} は対になっていないものだけに当たる
- */
-const UNSTORABLE = /\p{Cs}/u;
-const UNSTORABLE_ALL = /\p{Cs}/gu;
+/** 保存して読み戻すと変わる文字（fields.ts の UNSTORABLE）のすべてに当たる形。自由記述から除くのに使う */
+const UNSTORABLE_ALL = new RegExp(UNSTORABLE.source, "gu");
 
 /**
  * 自由記述を、記録に持てる形にする。上限で切り、保存して読み戻すと変わる文字を除く。
@@ -41,16 +35,16 @@ const commonFields = {
   opId: uuidSchema,
   ticketToken: ticketTokenSchema,
   /** チケットの fortee ユーザ名。記録した時点の値の写し */
-  userName: name,
+  userName: nameSchema,
   /** チケット番号。記録した時点の値の写し */
-  ticketNo: name,
+  ticketNo: nameSchema,
   /** 端末の時刻 */
   deviceTime: epochMsSchema,
   deviceId: uuidSchema,
   /** Discord のユーザ ID */
   operatorId: operatorIdSchema,
   /** Discord の表示名 */
-  operatorName: name,
+  operatorName: nameSchema,
 };
 
 const checkinFields = {
