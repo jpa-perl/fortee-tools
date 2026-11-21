@@ -22,11 +22,36 @@ export const identifierSchema = z.string().check(z.regex(/^[0-9A-Za-z_-]{1,32}$/
 export const EVENT_ID_PATTERN = /^[0-9A-Za-z_-]{1,64}$/;
 export const eventIdSchema = z.string().check(z.regex(EVENT_ID_PATTERN));
 
-/** 時刻。UTC のエポックミリ秒の整数（Design Doc 4.7） */
-export const epochMsSchema = z.int();
+/** Date が表せる時刻の端。ECMAScript の時刻の値は、±8.64e15 ミリ秒（1970 年の前後 1 億日）の範囲にある */
+export const EPOCH_MS_MAX = 8.64e15;
+
+/**
+ * 時刻。UTC のエポックミリ秒の整数で、Date が表せる範囲に限る（Design Doc 4.7）。
+ * 範囲の外の値は、Intl.DateTimeFormat が RangeError で拒む。画面と書き出しは、スキーマを通った時刻を
+ * 確かめ直さずに整形するので、範囲の外の時刻を持つ記録が 1 件あると、それを受け取った端末で記録の時刻を出す
+ * 画面の描画と、書き出しが、例外で失敗する
+ */
+export const epochMsSchema = z.int().check(z.gte(-EPOCH_MS_MAX), z.lte(EPOCH_MS_MAX));
 
 /** 操作者の ID。Discord のユーザ ID で、数字の 32 文字まで（Design Doc 7.3） */
 export const operatorIdSchema = z.string().check(z.regex(/^[0-9]{1,32}$/));
 
+/**
+ * D1 に保存して読み戻すと変わる文字。対になっていないサロゲートは UTF-8 にできず、読み戻すと 1 つが
+ * 3 つの U+FFFD になる（ローカルの D1 で確かめた）。u フラグの下では、対になったサロゲートは 1 文字として
+ * 扱われるので、\p{Cs} は対になっていないものだけに当たる
+ */
+export const UNSTORABLE = /\p{Cs}/u;
+
 /** 記録に写すユーザ名、チケット番号と、操作者の表示名の上限 */
 export const NAME_MAX_LENGTH = 100;
+
+/**
+ * 記録に写すユーザ名、チケット番号と、操作者の表示名（Design Doc 4.4、7.3）。
+ * 保存して読み戻すと変わる文字を通さない。読み戻した値が長くなって 100 文字を超えると、
+ * その記録を受け取る全端末の同期と、書き出しが止まる
+ */
+export const nameSchema = z.string().check(
+  z.maxLength(NAME_MAX_LENGTH),
+  z.refine((text) => !UNSTORABLE.test(text), "名前に、保存できない文字がある"),
+);

@@ -104,9 +104,9 @@ export async function fetchOperator(env: Env, accessToken: string): Promise<Oper
   if (!roles.some((role) => typeof role === "string" && staff.has(role))) return { kind: "no-role" };
 
   const name = nonEmptyString(member["nick"]) ?? nonEmptyString(user["global_name"]) ?? nonEmptyString(user["username"]);
-  // 操作者は記録に写される。記録のスキーマと同じ形（数字の ID、100 文字までの名前）でなければ、
-  // 以後の同期がすべて 400 になるので、セッションを発行しない。Discord の名前は 32 文字までなので、
-  // 切り詰めは実際には起きない
+  // 操作者は記録に写される。記録のスキーマと同じ形（数字の ID、100 文字までで、保存して読み戻すと変わる文字を
+  // 持たない名前）でなければ、以後の同期がすべて 400 になるので、セッションを発行しない。
+  // Discord の名前は 32 文字までなので、切り詰めは実際には起きない
   const operator = meResponseSchema.safeParse({
     operatorId: user["id"],
     operatorName: name?.slice(0, NAME_MAX_LENGTH),

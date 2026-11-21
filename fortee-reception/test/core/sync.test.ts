@@ -60,6 +60,13 @@ describe("同期の要求のスキーマ（Design Doc 4.5）", () => {
     expect(requestOk({ ...request, appVersion: "v".repeat(65) })).toBe(false);
   });
 
+  it("端末の現在時刻は、Date で表せる範囲に限る（Design Doc 4.7）", () => {
+    expect(requestOk({ ...request, deviceTime: 8.64e15 })).toBe(true);
+    expect(requestOk({ ...request, deviceTime: -8.64e15 })).toBe(true);
+    expect(requestOk({ ...request, deviceTime: 8.64e15 + 1 })).toBe(false);
+    expect(requestOk({ ...request, deviceTime: -8.64e15 - 1 })).toBe(false);
+  });
+
   it("形の合わない記録が 1 件でもあれば、要求の全体を拒む", () => {
     expect(requestOk({ ...request, records: [record, { ...record, op: "undo" }] })).toBe(false);
   });
@@ -92,5 +99,15 @@ describe("/api/me の応答のスキーマ", () => {
   it("操作者を通す", () => {
     const me = { operatorId: "123456789012345678", operatorName: "karupanerura" };
     expect(meResponseSchema.parse(me)).toEqual(me);
+  });
+
+  it("表示名は、記録の操作者名と同じ形に限る", () => {
+    const meOk = (operatorName: string) =>
+      meResponseSchema.safeParse({ operatorId: "123456789012345678", operatorName }).success;
+    expect(meOk("o".repeat(100))).toBe(true);
+    expect(meOk("o".repeat(101))).toBe(false);
+    // 保存して読み戻すと変わる文字（対になっていないサロゲート）を持つ表示名で記録を作ると、同期が 400 になる
+    expect(meOk("abc\ud83c")).toBe(false);
+    expect(meOk("🎫 受付")).toBe(true);
   });
 });

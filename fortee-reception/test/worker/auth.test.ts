@@ -277,6 +277,8 @@ describe("コールバック（Design Doc 7.1、7.2）", () => {
       // 記録の操作者の形（数字の ID、名前）に合わない
       [{ user: json({ id: "not-a-number", username: "x" }) }, "operator"],
       [{ user: json({ id: "1" }), member: json({ roles: [STAFF_ROLE] }) }, "operator"],
+      // 保存して読み戻すと変わる文字（対になっていないサロゲート）を持つ名前。記録の操作者名にできない
+      [{ member: json({ nick: "abc\ud83c", roles: [STAFF_ROLE] }) }, "operator"],
       [{ member: json({ message: "rate limited" }, 429) }, "member"],
       [{ member: json({}, 500) }, "member"],
       [{ member: networkError }, "TypeError"],

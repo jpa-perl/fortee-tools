@@ -1,6 +1,12 @@
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { syncRequestSchema, SYNC_BODY_MAX_BYTES, SYNC_RECEIVE_MAX_BYTES } from "../../src/core/sync.ts";
+import {
+  syncRequestSchema,
+  syncResponseSchema,
+  SYNC_BODY_MAX_BYTES,
+  SYNC_RECEIVE_MAX_BYTES,
+} from "../../src/core/sync.ts";
+import { formatOffsetIso, formatTimeOnDay } from "../../src/core/time.ts";
 import { SYNC_PROTOCOL_VERSION } from "../../src/core/versions.ts";
 import { SESSION_COOKIE, signSession, verifySession } from "../../src/worker/session.ts";
 import { DEVICE_MEASURE_INTERVAL_MS, runSync } from "../../src/worker/sync.ts";
@@ -113,6 +119,40 @@ describe("同期: 記録の保存と受け取り（Design Doc 4.5、7.3）", () 
     expect(next.records.map((r) => r.recordId)).toEqual([fromB.recordId]);
     expect(next.nextSeq).toBe(3);
   });
+});
+
+describe("同期: ほかの端末の同期と書き出しを止める値（Design Doc 4.4、4.7）", () => {
+  // セッションを持つ 1 台が、受付アプリを通さずに送った記録を想定する。送った端末への応答は見ない。
+  // 拒まれても保存されても、その後に同期するほかの端末が、応答を読めて、記録の時刻を整形できることを確かめる
+
+  it.each(["userName", "ticketNo", "operatorName"] as const)(
+    "対になっていないサロゲートの並ぶ %s を送られても、ほかの端末は応答を読める",
+    async (field) => {
+      // D1 は、対になっていないサロゲート 1 つを 3 つの U+FFFD にして返す。34 個は、送るときには 100 文字に収まり、
+      // 読み戻すと 102 文字になる
+      await postSync(syncBody({ records: [checkin({ [field]: "\ud83c".repeat(34) })] }));
+
+      const res = await postSync(syncBody({ deviceId: DEVICE_B }));
+      expect(res.status).toBe(200);
+      // 受付アプリは、応答の全体を core のスキーマで検証し、通らなければ同期の失敗にする（Design Doc 4.1）
+      const parsed = syncResponseSchema.safeParse(await res.json());
+      expect(parsed.error?.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`) ?? []).toEqual([]);
+    },
+  );
+
+  it.each([8.64e15 + 1, -8.64e15 - 1, Number.MAX_SAFE_INTEGER])(
+    "Date で表せない時刻（%d）の記録を送られても、ほかの端末と書き出しは時刻を整形できる",
+    async (deviceTime) => {
+      await postSync(syncBody({ records: [checkin({ deviceTime })] }));
+
+      const { records } = await sync({ deviceId: DEVICE_B });
+      for (const record of records) {
+        // 直近の記録と履歴の行（formatClock）、書き出しの日時（iso）が呼ぶ整形。どちらも例外を受けない
+        expect(() => formatTimeOnDay(record.deviceTime, 0, "Asia/Tokyo")).not.toThrow();
+        expect(() => formatOffsetIso(record.deviceTime, "Asia/Tokyo")).not.toThrow();
+      }
+    },
+  );
 });
 
 describe("同期: ページング（Design Doc 7.3）", () => {
@@ -386,6 +426,14 @@ describe("同期: 401、400、413、403（Design Doc 4.5、7.1、9.3）", () => 
       { ...syncBody(), records: [good, { ...cancel(), targetRecordIds: [] }] },
       { ...syncBody(), records: [good, { ...cancel(), reasonKind: "other", reasonText: "x".repeat(2001) }] },
       { ...syncBody(), records: [good, { ...cancel(), targetRecordIds: Array.from({ length: 51 }, () => crypto.randomUUID()) }] },
+      // 保存して読み戻すと変わる文字を持つ名前（Design Doc 4.4）
+      { ...syncBody(), records: [good, { ...checkin(), userName: "abc\ud83c" }] },
+      { ...syncBody(), records: [good, { ...checkin(), ticketNo: "abc\ud83c" }] },
+      { ...syncBody(), records: [good, { ...checkin(), operatorName: "abc\ud83c" }] },
+      // Date で表せない時刻（Design Doc 4.7）
+      { ...syncBody(), records: [good, { ...checkin(), deviceTime: 8.64e15 + 1 }] },
+      { ...syncBody(), records: [good, { ...checkin(), deviceTime: -8.64e15 - 1 }] },
+      { ...syncBody(), deviceTime: 8.64e15 + 1 },
       "{",
       "null",
       "[]",

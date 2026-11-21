@@ -31,6 +31,9 @@ const cancel = {
 
 const ok = (value: unknown) => checkinRecordSchema.safeParse(value).success;
 
+/** Date が表せる時刻の端（ECMAScript の時刻の値の範囲。±8.64e15 ミリ秒） */
+const DATE_MAX = 8.64e15;
+
 describe("記録のスキーマ（Design Doc 4.4）", () => {
   it("チェックインと取り消しの記録を通す", () => {
     expect(ok(checkin)).toBe(true);
@@ -88,6 +91,27 @@ describe("記録のスキーマ（Design Doc 4.4）", () => {
     expect(ok({ ...other, reasonText: "🎫 を\n読み直した\t\u0000" })).toBe(true);
   });
 
+  it("保存して読み戻すと変わる文字を持つ名前を拒む", () => {
+    for (const field of ["userName", "ticketNo", "operatorName"]) {
+      expect(ok({ ...checkin, [field]: "abc\ud83c" }), field).toBe(false);
+      expect(ok({ ...checkin, [field]: "\udfab abc" }), field).toBe(false);
+      expect(ok({ ...cancel, [field]: "abc\ud83c" }), field).toBe(false);
+      // 対になったサロゲート（絵文字）は通す。上限は、符号単位で数えたまま変えない
+      expect(ok({ ...checkin, [field]: "🎫 受付" }), field).toBe(true);
+      expect(ok({ ...checkin, [field]: "🎫".repeat(50) }), field).toBe(true);
+    }
+  });
+
+  it("Date で表せる範囲の端末の時刻だけを通す（Design Doc 4.7）", () => {
+    expect(ok({ ...checkin, deviceTime: DATE_MAX })).toBe(true);
+    expect(ok({ ...checkin, deviceTime: -DATE_MAX })).toBe(true);
+    expect(ok({ ...checkin, deviceTime: 0 })).toBe(true);
+    expect(ok({ ...checkin, deviceTime: DATE_MAX + 1 })).toBe(false);
+    expect(ok({ ...checkin, deviceTime: -DATE_MAX - 1 })).toBe(false);
+    expect(ok({ ...checkin, deviceTime: Number.MAX_SAFE_INTEGER })).toBe(false);
+    expect(ok({ ...cancel, deviceTime: DATE_MAX + 1 })).toBe(false);
+  });
+
   it("入力された自由記述を、記録に持てる形にする", () => {
     expect(clampReasonText("二重に読み取った")).toBe("二重に読み取った");
     expect(clampReasonText("ab\ud83cc")).toBe("abc");
@@ -128,5 +152,14 @@ describe("サーバが返す記録のスキーマ", () => {
   it("連番と受信時刻のない記録を拒む", () => {
     expect(serverRecordSchema.safeParse(checkin).success).toBe(false);
     expect(serverRecordSchema.safeParse({ ...checkin, seq: 0, receivedAt: 1 }).success).toBe(false);
+  });
+
+  it("端末が作る記録と同じ条件で、名前と時刻を確かめる", () => {
+    const record = { ...checkin, seq: 1, receivedAt: 1764300000123 };
+    const serverOk = (value: unknown) => serverRecordSchema.safeParse(value).success;
+    expect(serverOk({ ...record, operatorName: "abc\ud83c" })).toBe(false);
+    expect(serverOk({ ...record, deviceTime: DATE_MAX + 1 })).toBe(false);
+    expect(serverOk({ ...record, receivedAt: DATE_MAX + 1 })).toBe(false);
+    expect(serverOk({ ...record, receivedAt: DATE_MAX })).toBe(true);
   });
 });

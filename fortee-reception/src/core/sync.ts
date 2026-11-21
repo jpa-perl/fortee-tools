@@ -1,5 +1,5 @@
 import * as z from "zod/mini";
-import { epochMsSchema, eventIdSchema, NAME_MAX_LENGTH, operatorIdSchema, uuidSchema } from "./fields.ts";
+import { epochMsSchema, eventIdSchema, nameSchema, operatorIdSchema, uuidSchema } from "./fields.ts";
 import { checkinRecordSchema, serverRecordSchema } from "./record.ts";
 import { SYNC_PROTOCOL_VERSION } from "./versions.ts";
 
@@ -68,8 +68,8 @@ export type SyncResponse = z.infer<typeof syncResponseSchema>;
 export const meResponseSchema = z.object({
   /** Discord のユーザ ID */
   operatorId: operatorIdSchema,
-  /** Discord の表示名 */
-  operatorName: z.string().check(z.maxLength(NAME_MAX_LENGTH)),
+  /** Discord の表示名。記録の操作者名と同じスキーマで確かめる */
+  operatorName: nameSchema,
 });
 export type MeResponse = z.infer<typeof meResponseSchema>;
 
